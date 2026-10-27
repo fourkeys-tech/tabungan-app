@@ -63,7 +63,7 @@ export default function RegisterPage() {
       {/* ========================================================= */}
       {/* HEADER BERSIH TANPA HOVER EFEK                            */}
       {/* ========================================================= */}
-      <header className="fixed top-0 left-0 right-0 z-50 p-space-md lg:p-space-lg flex justify-between items-center pointer-events-none">
+      <header className="fixed top-0 left-0 right-0 z-50 px-space-md py-space-sm lg:p-space-lg flex justify-between items-center pointer-events-none bg-surface/90 backdrop-blur-md border-b border-outline-variant/20 lg:bg-transparent lg:backdrop-blur-none lg:border-transparent">
         {/* Sisi Kiri: Brand Logo */}
         <Link
           href="/"
@@ -102,7 +102,7 @@ export default function RegisterPage() {
             {/* ========================================================= */}
             {/* Left Column: Ruang Informasi Portofolio Finansial         */}
             {/* ========================================================= */}
-            <div className="w-full lg:w-[48%] xl:w-[45%] relative bg-[#092215] text-[#ecfbf2] p-space-lg md:p-space-xl lg:p-space-2xl flex flex-col justify-between overflow-hidden shadow-2xl z-10">
+            <div className="hidden lg:flex lg:w-[48%] xl:w-[45%] relative bg-[#092215] text-[#ecfbf2] p-space-lg md:p-space-xl lg:p-space-2xl flex-col justify-between overflow-hidden shadow-2xl z-10">
               {/* Ambient Lighting Blobs */}
               <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-[#16834a]/30 blur-3xl pointer-events-none" />
               <div className="absolute bottom-16 right-[-10%] w-[32rem] h-[32rem] rounded-full bg-[#006874]/25 blur-3xl pointer-events-none" />
@@ -208,7 +208,7 @@ export default function RegisterPage() {
             {/* ========================================================= */}
             {/* Right Column: Form Pendaftaran Akun Baru                  */}
             {/* ========================================================= */}
-            <div className="w-full lg:w-[52%] xl:w-[55%] bg-surface flex flex-col justify-center items-center p-space-md sm:p-space-lg lg:p-space-xl relative pt-24 lg:pt-space-xl">
+            <div className="w-full min-h-screen lg:min-h-0 lg:w-[52%] xl:w-[55%] bg-surface flex flex-col justify-center items-center p-space-md sm:p-space-lg lg:p-space-xl relative pt-24 pb-space-xl lg:pt-space-xl">
               {/* Ambient Background Lighting (Subtle) */}
               <div className="absolute top-12 right-12 w-72 h-72 rounded-full bg-surface-container-high/60 blur-3xl pointer-events-none" />
               <div className="absolute bottom-10 left-12 w-64 h-64 rounded-full bg-surface-container/70 blur-3xl pointer-events-none" />
