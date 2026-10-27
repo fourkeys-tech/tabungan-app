@@ -63,7 +63,7 @@ export default function RegisterPage() {
       {/* ========================================================= */}
       {/* HEADER BERSIH TANPA HOVER EFEK                            */}
       {/* ========================================================= */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-space-md py-space-sm lg:p-space-lg flex justify-between items-center pointer-events-none bg-surface/90 backdrop-blur-md border-b border-outline-variant/20 lg:bg-transparent lg:backdrop-blur-none lg:border-transparent">
+      <header className="fixed top-0 left-0 right-0 z-50 px-space-md py-space-sm lg:p-space-lg flex justify-between items-center pointer-events-none bg-transparent">
         {/* Sisi Kiri: Brand Logo */}
         <Link
           href="/"
