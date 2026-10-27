@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { createClient } from "@/utils/supabase/client";
+import { registerAction } from "@/app/actions/auth";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -39,23 +40,30 @@ export default function RegisterPage() {
     setError(null);
     setInfo(null);
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name } },
-    });
+    // Gunakan server action admin untuk bypass email rate limit & auto-confirm email
+    const res = await registerAction({ name, email, password });
 
-    if (signUpError) {
-      setError(signUpError.message || "Gagal mendaftar. Silakan periksa kembali data Anda.");
+    if (!res.success) {
+      setError(res.error || "Gagal mendaftar. Silakan periksa kembali data Anda.");
       setLoading(false);
-    } else if (data.session) {
-      setRegisterSuccess(true);
-      router.push("/dashboard");
-      router.refresh();
-    } else {
-      setInfo("Akun berhasil dibuat. Silakan cek email Anda untuk verifikasi atau langsung coba masuk.");
-      setLoading(false);
+      return;
     }
+
+    if (res.requireClientLogin) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) {
+        setError("Akun berhasil dibuat. Silakan masuk menggunakan kata sandi Anda di halaman Login.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    setRegisterSuccess(true);
+    router.push("/dashboard");
+    router.refresh();
   };
 
   return (
