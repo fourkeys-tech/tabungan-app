@@ -27,10 +27,17 @@ interface GroupOption {
   name: string;
 }
 
+interface PersonalPotOption {
+  id: string;
+  name: string;
+}
+
 interface Props {
   groups: GroupOption[];
+  personalPots?: PersonalPotOption[];
   defaultScope?: 'personal' | 'shared';
   defaultGroupId?: string;
+  defaultPersonalPotId?: string;
   triggerText?: string;
   variant?: 'primary' | 'secondary' | 'header-cta';
   className?: string;
@@ -43,8 +50,10 @@ const QUICK_CHIPS = [50000, 100000, 500000];
 
 export function AddGeneralTransactionModal({
   groups,
+  personalPots = [],
   defaultScope = 'personal',
   defaultGroupId,
+  defaultPersonalPotId,
   triggerText = 'Tambah Transaksi',
   variant = 'primary',
   className = '',
@@ -59,6 +68,9 @@ export function AddGeneralTransactionModal({
   const [scope, setScope] = useState<'personal' | 'shared'>(defaultScope);
   const [selectedGroupId, setSelectedGroupId] = useState<string>(
     defaultGroupId || groups[0]?.id || ''
+  );
+  const [selectedPersonalPotId, setSelectedPersonalPotId] = useState<string>(
+    defaultPersonalPotId || personalPots[0]?.id || 'personal'
   );
   const [type, setType] = useState<'in' | 'out'>('in');
   const [amountDisplay, setAmountDisplay] = useState('');
@@ -244,7 +256,10 @@ export function AddGeneralTransactionModal({
     setError(null);
 
     const formData = new FormData();
-    formData.append('destination', isShared ? selectedGroupId : 'personal');
+    formData.append(
+      'destination',
+      isShared ? selectedGroupId : selectedPersonalPotId || 'personal'
+    );
     formData.append('type', type);
     formData.append('amount', amountDisplay.replace(/[^0-9]/g, ''));
     formData.append('category', resolvedCategory || availableCategories[0]);
@@ -396,6 +411,35 @@ export function AddGeneralTransactionModal({
                         {groups.map((g) => (
                           <option key={g.id} value={g.id}>
                             {g.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Destination Dropdown for Personal Pots */}
+                {!isShared && personalPots.length > 1 && (
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="personal_pot_select"
+                      className="block font-caption-medium text-caption-medium text-on-surface"
+                    >
+                      Pilih Pos Tabungan Personal <span className="text-error">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant">
+                        <Wallet size={15} />
+                      </span>
+                      <select
+                        id="personal_pot_select"
+                        value={selectedPersonalPotId}
+                        onChange={(e) => setSelectedPersonalPotId(e.target.value)}
+                        className="w-full h-11 pl-9 pr-4 rounded-lg border border-surface-container-highest bg-surface-container-low text-on-surface focus:outline-none focus:border-primary focus:bg-surface-container-lowest text-caption-medium transition-all"
+                      >
+                        {personalPots.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
                           </option>
                         ))}
                       </select>

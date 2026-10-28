@@ -3,10 +3,11 @@
 import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import type { Tx } from '@/utils/finance';
+import type { SavingsPot, Tx } from '@/utils/finance';
 import { formatRupiah, formatDate } from '@/utils/format';
 import { usePrivacy } from '@/components/PrivacyContext';
 import { AddPersonalTransactionModal } from '@/components/AddPersonalTransactionModal';
+import { CreatePersonalPotModal } from '@/components/CreatePersonalPotModal';
 import { CategoryManager, type CategoryData } from '@/components/CategoryManager';
 import { ExportPdfStatementButton } from '@/components/ExportPdfStatementButton';
 import { ExportCsvButton } from '@/components/ExportCsvButton';
@@ -25,6 +26,7 @@ interface Props {
   openingBalance: number;
   personalTxs: Tx[];
   categories: CategoryData[];
+  pots?: SavingsPot[];
 }
 
 type PeriodKey = '7d' | 'month' | 'quarter' | 'year' | 'all';
@@ -51,6 +53,7 @@ export function PersonalLedgerClient({
   openingBalance,
   personalTxs,
   categories,
+  pots = [],
 }: Props) {
   const router = useRouter();
   const { isHidden, togglePrivacy } = usePrivacy();
@@ -59,6 +62,18 @@ export function PersonalLedgerClient({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const [selectedPotId, setSelectedPotId] = useState<string>('ALL');
+  const potsList = pots ?? [];
+  const activePot = selectedPotId !== 'ALL' ? potsList.find((p) => p.id === selectedPotId) : null;
+
+  const potFilteredTxs = useMemo(() => {
+    if (!activePot) return personalTxs;
+    return personalTxs.filter((t) => t.pot_id === activePot.id);
+  }, [personalTxs, activePot]);
+
+  const effectiveBalance = activePot ? activePot.balance : balance;
+  const effectiveOpening = activePot ? activePot.opening_balance : openingBalance;
 
   // 1. State Filter Periode di Hero Card
   const [period, setPeriod] = useState<PeriodKey>(() => {
@@ -139,7 +154,7 @@ export function PersonalLedgerClient({
       rangeLabel = 'Semua Periode';
     }
 
-    const filtered = personalTxs.filter((tx) => {
+    const filtered = potFilteredTxs.filter((tx) => {
       if (!startDate) return true;
       const txD = new Date(tx.transaction_date + 'T00:00:00');
       return txD >= startDate;
@@ -150,7 +165,7 @@ export function PersonalLedgerClient({
       periodDateRangeLabel: rangeLabel,
       periodSubtitle: subtitle,
     };
-  }, [personalTxs, period, now, currentMonthLabel, currentYear]);
+  }, [potFilteredTxs, period, now, currentMonthLabel, currentYear]);
 
   // 3 Metrik Utama berdasarkan transaksi ACTIVE pada periode terpilih
   const { periodIncome, periodExpense, netCashflow, categoryBreakdown } = useMemo(() => {
@@ -355,12 +370,156 @@ export function PersonalLedgerClient({
             <span>Atur Kategori</span>
           </button>
 
+          <CreatePersonalPotModal
+            triggerText="+ Buat Pos Baru"
+            variant="secondary"
+          />
+
           <AddPersonalTransactionModal
+            pots={potsList.map((p) => ({ id: p.id, name: p.name }))}
+            defaultPotId={activePot?.id}
             triggerText="+ Tambah Transaksi"
             initialCategories={availableCategories}
           />
         </div>
       </header>
+
+      {/* SECTION DAFTAR KANTONG / POS TABUNGAN PERSONAL */}
+      <section className="flex flex-col gap-space-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-space-xs">
+            <span className="material-symbols-outlined text-primary text-[20px]">
+              account_balance_wallet
+            </span>
+            <h2 className="font-headline-h3 text-headline-h3 text-on-surface">
+              Pos &amp; Alokasi Tabungan ({potsList.length} Pos)
+            </h2>
+          </div>
+          <span className="font-caption text-caption text-on-surface-variant">
+            Pilih pos untuk melihat rincian &amp; mutasi spesifik
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-space-md">
+          {/* Card: Semua Pos Personal (Total) */}
+          <button
+            type="button"
+            onClick={() => setSelectedPotId('ALL')}
+            className={`p-space-md rounded-2xl text-left transition-all border cursor-pointer flex flex-col justify-between ${
+              selectedPotId === 'ALL'
+                ? 'bg-primary-container/20 border-primary shadow-sm ring-1 ring-primary'
+                : 'bg-surface-container-low hover:bg-surface-container border-outline-variant/30'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="font-caption-medium text-caption-medium text-on-surface uppercase tracking-wider">
+                  Semua Pos Personal
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  selectedPotId === 'ALL'
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-surface-container-highest text-on-surface-variant'
+                }`}>
+                  {selectedPotId === 'ALL' ? 'Aktif Dipilih' : 'Semua'}
+                </span>
+              </div>
+              <div className="mt-2">
+                <span className="font-currency-body text-headline-h3 text-on-surface font-bold tabular-nums block">
+                  {isHidden ? '••••••••' : formatRupiah(balance)}
+                </span>
+                <span className="font-caption text-caption text-on-surface-variant block mt-1">
+                  Akumulasi saldo seluruh pos personal Anda
+                </span>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-outline-variant/20 flex items-center justify-between text-xs text-on-surface-variant">
+              <span>{personalTxs.length} Transaksi Tercatat</span>
+              <span className="text-primary font-medium">Tampilkan Semua &rarr;</span>
+            </div>
+          </button>
+
+          {/* Cards: Masing-masing Pos Personal */}
+          {potsList.map((pot) => {
+            const isSelected = selectedPotId === pot.id;
+            const progress =
+              pot.target_amount && pot.target_amount > 0
+                ? Math.min(100, Math.round((pot.balance / pot.target_amount) * 100))
+                : null;
+
+            return (
+              <div
+                key={pot.id}
+                onClick={() => setSelectedPotId(pot.id)}
+                className={`p-space-md rounded-2xl text-left transition-all border cursor-pointer flex flex-col justify-between ${
+                  isSelected
+                    ? 'bg-primary-container/20 border-primary shadow-sm ring-1 ring-primary'
+                    : 'bg-surface-container-low hover:bg-surface-container border-outline-variant/30'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-caption-medium text-caption-medium text-on-surface font-semibold truncate max-w-[180px]">
+                      {pot.name}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        isSelected
+                          ? 'bg-primary text-on-primary'
+                          : 'bg-surface-container-highest text-on-surface-variant'
+                      }`}
+                    >
+                      {isSelected ? 'Aktif Dipilih' : 'Pos Personal'}
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <span className="font-currency-body text-headline-h3 text-on-surface font-bold tabular-nums block">
+                      {isHidden ? '••••••••' : formatRupiah(pot.balance)}
+                    </span>
+                    <p className="font-caption text-caption text-on-surface-variant line-clamp-1 mt-0.5">
+                      {pot.description || 'Pos tabungan mandiri aktif'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Progress bar jika memiliki target */}
+                {pot.target_amount && pot.target_amount > 0 && (
+                  <div className="mt-3 pt-2 border-t border-outline-variant/20">
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className="text-on-surface-variant">
+                        Target: {formatRupiah(pot.target_amount)}
+                      </span>
+                      <span className="font-semibold text-primary">{progress}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
+                      <div
+                        className="h-full bg-primary transition-all duration-500 rounded-full"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Quick Create Card */}
+          <div className="p-space-md rounded-2xl border border-dashed border-outline-variant/60 bg-surface-container-lowest/50 hover:bg-surface-container-low flex flex-col items-center justify-center text-center gap-2 min-h-[120px] transition-colors">
+            <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+              <span className="material-symbols-outlined text-[20px]">add</span>
+            </div>
+            <div>
+              <span className="font-caption-medium text-caption-medium text-on-surface block font-semibold">
+                Tambah Pos Tabungan Lain
+              </span>
+              <span className="text-[11px] text-on-surface-variant">
+                Pisahkan dana darurat, belanja, laptop, dll.
+              </span>
+            </div>
+            <CreatePersonalPotModal triggerText="+ Buat Pos Baru" variant="inline" />
+          </div>
+        </div>
+      </section>
 
       {/* HERO BALANCE CARD */}
       <section className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-lg relative overflow-hidden">
@@ -368,7 +527,7 @@ export function PersonalLedgerClient({
           <div className="flex flex-col gap-space-2xs">
             <div className="flex items-center gap-space-xs">
               <span className="font-caption-medium text-caption-medium uppercase tracking-wider text-outline">
-                Saldo Personal Utama
+                {activePot ? `Saldo Pos: ${activePot.name}` : 'Saldo Seluruh Pos Personal'}
               </span>
               <button
                 onClick={togglePrivacy}
@@ -386,7 +545,7 @@ export function PersonalLedgerClient({
                 Rp
               </span>
               <span className="font-currency-display text-currency-display text-on-surface tracking-tight tabular-nums">
-                {isHidden ? '••••••••' : formatNumberOnly(balance)}
+                {isHidden ? '••••••••' : formatNumberOnly(effectiveBalance)}
               </span>
               <span className="font-caption-medium text-caption-medium text-primary px-space-xs py-0.5 rounded-full bg-primary-fixed/30 ml-space-xs flex items-center gap-1">
                 <span className="material-symbols-outlined text-xs">

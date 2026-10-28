@@ -24,17 +24,32 @@ interface GroupOption {
   name: string;
 }
 
+interface PersonalPotOption {
+  id: string;
+  name: string;
+}
+
 interface Props {
   groups: GroupOption[];
+  personalPots?: PersonalPotOption[];
   defaultGroupId?: string;
+  defaultPotId?: string;
   initialCategories?: string[];
 }
 
-export function TransactionForm({ groups, defaultGroupId, initialCategories }: Props) {
+export function TransactionForm({
+  groups,
+  personalPots = [],
+  defaultGroupId,
+  defaultPotId,
+  initialCategories,
+}: Props) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [destination, setDestination] = useState<string>(defaultGroupId || 'personal');
+  const [destination, setDestination] = useState<string>(
+    defaultGroupId || defaultPotId || (personalPots[0]?.id ?? 'personal')
+  );
   const [type, setType] = useState<'in' | 'out'>('in');
   const [amountDisplay, setAmountDisplay] = useState('');
   const [category, setCategory] = useState('');
@@ -49,7 +64,7 @@ export function TransactionForm({ groups, defaultGroupId, initialCategories }: P
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isShared = destination !== 'personal';
+  const isShared = groups.some((g) => g.id === destination);
 
   // Opsi kategori baseline & dinamis
   const baselineOptions = isShared
@@ -222,7 +237,17 @@ export function TransactionForm({ groups, defaultGroupId, initialCategories }: P
                 onChange={(e) => setDestination(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-container-high bg-surface-container-low text-on-surface focus:outline-none focus:border-primary text-sm transition-all"
               >
-                <option value="personal">💼 Tabungan Pribadi</option>
+                {personalPots.length > 0 ? (
+                  <optgroup label="💼 Pos Tabungan Personal">
+                    {personalPots.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : (
+                  <option value="personal">💼 Tabungan Pribadi</option>
+                )}
                 {groups.length > 0 && (
                   <optgroup label="👥 Tabungan Bersama">
                     {groups.map((g) => (

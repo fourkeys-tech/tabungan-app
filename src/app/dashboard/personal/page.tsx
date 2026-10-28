@@ -27,6 +27,7 @@ export default async function PersonalLedgerPage() {
 
   const balance = personalBalance(d);
   const personalTxs = d.txs.filter((t) => t.scope_type === 'PERSONAL');
+  const personalPots = d.pots.filter((p) => p.type === 'PERSONAL');
 
   const accountName =
     profile?.name ||
@@ -51,6 +52,7 @@ export default async function PersonalLedgerPage() {
       openingBalance={d.openingBalance}
       personalTxs={personalTxs}
       categories={mappedCategories}
+      pots={personalPots}
     />
   );
 }

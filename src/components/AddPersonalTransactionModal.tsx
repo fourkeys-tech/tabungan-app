@@ -19,7 +19,14 @@ import {
   ImageIcon,
 } from 'lucide-react';
 
+interface PotOption {
+  id: string;
+  name: string;
+}
+
 interface Props {
+  pots?: PotOption[];
+  defaultPotId?: string;
   triggerText?: string;
   variant?: 'primary' | 'secondary' | 'card-action';
   className?: string;
@@ -30,6 +37,8 @@ interface Props {
 const QUICK_CHIPS = [50000, 100000, 500000];
 
 export function AddPersonalTransactionModal({
+  pots,
+  defaultPotId,
   triggerText = 'Tambah Transaksi',
   variant = 'primary',
   className = '',
@@ -40,6 +49,9 @@ export function AddPersonalTransactionModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedPotId, setSelectedPotId] = useState<string>(
+    defaultPotId || pots?.[0]?.id || 'personal'
+  );
   const [type, setType] = useState<'in' | 'out'>('in');
   const [amountDisplay, setAmountDisplay] = useState('');
   const [category, setCategory] = useState('');
@@ -59,6 +71,14 @@ export function AddPersonalTransactionModal({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (defaultPotId) {
+      setSelectedPotId(defaultPotId);
+    } else if (pots && pots.length > 0) {
+      setSelectedPotId(pots[0].id);
+    }
+  }, [defaultPotId, pots]);
 
   const baselineOptions =
     type === 'in' ? BASELINE_CATEGORIES.personal_in : BASELINE_CATEGORIES.personal_out;
@@ -83,6 +103,11 @@ export function AddPersonalTransactionModal({
     setReceiptFile(null);
     setReceiptPreview(null);
     setError(null);
+    if (defaultPotId) {
+      setSelectedPotId(defaultPotId);
+    } else if (pots && pots.length > 0) {
+      setSelectedPotId(pots[0].id);
+    }
   };
 
   const handleClose = () => {
@@ -167,7 +192,7 @@ export function AddPersonalTransactionModal({
     setError(null);
 
     const formData = new FormData();
-    formData.append('destination', 'personal');
+    formData.append('destination', selectedPotId || 'personal');
     formData.append('type', type);
     formData.append('amount', amountDisplay.replace(/[^0-9]/g, ''));
     formData.append('category', resolvedCategory || availableCategories[0]);
@@ -292,6 +317,31 @@ export function AddPersonalTransactionModal({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3.5">
+              {/* Pilihan Pos jika user memiliki lebih dari 1 pos personal */}
+              {pots && pots.length > 1 && (
+                <div className="space-y-1.5">
+                  <label className="block font-caption-medium text-caption-medium text-on-surface">
+                    Pos Tabungan Tujuan <span className="text-error">*</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3 text-on-surface-variant">
+                      <Wallet size={18} />
+                    </span>
+                    <select
+                      value={selectedPotId}
+                      onChange={(e) => setSelectedPotId(e.target.value)}
+                      className="w-full pl-10 pr-8 py-2.5 bg-surface-container-low border border-outline-variant/30 rounded-xl text-on-surface text-sm focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                    >
+                      {pots.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
               {/* Amount */}
               <div className="space-y-1.5">
                 <label
@@ -300,36 +350,37 @@ export function AddPersonalTransactionModal({
                 >
                   Nominal Transaksi (IDR) <span className="text-error">*</span>
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant font-medium text-body-medium">
+                <div className="relative flex items-center">
+                  <span className="absolute left-3.5 font-headline-h3 text-headline-h3 text-on-surface-variant font-semibold">
                     Rp
                   </span>
                   <input
-                    type="text"
                     id="personal_amount"
+                    type="text"
+                    inputMode="numeric"
                     required
-                    autoFocus
+                    placeholder="0"
                     value={amountDisplay}
                     onChange={handleAmountChange}
-                    placeholder="0"
-                    className="w-full h-11 pl-11 pr-4 rounded-lg border border-surface-container-highest bg-surface-container-low text-on-surface focus:outline-none focus:border-primary focus:bg-surface-container-lowest text-lg font-bold tabular-nums tracking-tight transition-all placeholder:text-on-surface-variant/60"
+                    className="w-full pl-12 pr-4 py-2.5 bg-surface-container-low border border-outline-variant/40 rounded-lg font-headline-h3 text-headline-h3 text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors tabular-nums"
                   />
                 </div>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {QUICK_CHIPS.map((chip) => (
+                {/* Quick Add Chips */}
+                <div className="flex gap-2 pt-1">
+                  {QUICK_CHIPS.map((chipVal) => (
                     <button
-                      key={chip}
+                      key={chipVal}
                       type="button"
-                      onClick={() => handleQuickAdd(chip)}
-                      className="px-2.5 py-1 rounded-md bg-surface-container-low hover:bg-surface-container-high border border-surface-container-highest text-on-surface font-caption-medium text-caption-medium tabular-nums transition-colors cursor-pointer"
+                      onClick={() => handleQuickAdd(chipVal)}
+                      className="px-2.5 py-1 text-xs font-medium rounded-md bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer"
                     >
-                      + Rp {new Intl.NumberFormat('id-ID').format(chip)}
+                      + Rp {new Intl.NumberFormat('id-ID').format(chipVal)}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Dynamic Category */}
+              {/* Category */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="personal_category"
@@ -337,35 +388,34 @@ export function AddPersonalTransactionModal({
                 >
                   Kategori Transaksi
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant">
-                    <Tag size={15} />
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-on-surface-variant">
+                    <Tag size={18} />
                   </span>
                   <select
                     id="personal_category"
                     value={isCustomCategory ? '__custom__' : category}
                     onChange={handleCategorySelect}
-                    className="w-full h-11 pl-9 pr-4 rounded-lg border border-surface-container-highest bg-surface-container-low text-on-surface focus:outline-none focus:border-primary focus:bg-surface-container-lowest text-caption-medium transition-all"
+                    className="w-full pl-10 pr-8 py-2.5 bg-surface-container-low border border-outline-variant/30 rounded-lg text-body-medium text-on-surface focus:outline-none focus:border-primary transition-colors cursor-pointer"
                   >
                     {availableCategories.map((cat) => (
                       <option key={cat} value={cat}>
                         {cat}
                       </option>
                     ))}
-                    <option value="__custom__">+ Kategori Baru...</option>
+                    <option value="__custom__">+ Tambah Kategori Baru...</option>
                   </select>
                 </div>
-
                 {isCustomCategory && (
-                  <div className="mt-2 animate-in fade-in duration-150">
+                  <div className="mt-2">
                     <input
                       type="text"
+                      autoFocus
+                      required
+                      placeholder="Ketik nama kategori baru..."
                       value={customCategoryName}
                       onChange={(e) => setCustomCategoryName(e.target.value)}
-                      placeholder="Ketik nama kategori kustom baru..."
-                      required
-                      autoFocus
-                      className="w-full h-10 px-3.5 rounded-lg border border-primary bg-surface-container-lowest text-on-surface focus:outline-none text-caption-medium transition-all"
+                      className="w-full px-3 py-2 bg-surface-container-low border border-primary/50 rounded-lg text-body-medium text-on-surface focus:outline-none focus:border-primary transition-colors"
                     />
                   </div>
                 )}
@@ -379,26 +429,22 @@ export function AddPersonalTransactionModal({
                 >
                   Keterangan / Entitas
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant">
-                    <FileText size={15} />
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-on-surface-variant">
+                    <FileText size={18} />
                   </span>
                   <input
-                    type="text"
                     id="personal_desc"
+                    type="text"
+                    placeholder="Contoh: Gaji Bulanan PT Maju Terus / Belanja Supermarket"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder={
-                      type === 'in'
-                        ? 'Contoh: Gaji Bulanan PT Maju Terus'
-                        : 'Contoh: Belanja Bulanan Supermarket'
-                    }
-                    className="w-full h-11 pl-9 pr-4 rounded-lg border border-surface-container-highest bg-surface-container-low text-on-surface focus:outline-none focus:border-primary focus:bg-surface-container-lowest text-caption-medium transition-all placeholder:text-on-surface-variant/60"
+                    className="w-full pl-10 pr-4 py-2.5 bg-surface-container-low border border-outline-variant/30 rounded-lg text-body-medium text-on-surface focus:outline-none focus:border-primary transition-colors"
                   />
                 </div>
               </div>
 
-              {/* Date */}
+              {/* Transaction Date */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="personal_date"
@@ -406,69 +452,26 @@ export function AddPersonalTransactionModal({
                 >
                   Tanggal Transaksi
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant">
-                    <Calendar size={15} />
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-on-surface-variant">
+                    <Calendar size={18} />
                   </span>
                   <input
-                    type="date"
                     id="personal_date"
+                    type="date"
+                    required
                     value={transactionDate}
                     onChange={(e) => setTransactionDate(e.target.value)}
-                    className="w-full h-11 pl-9 pr-4 rounded-lg border border-surface-container-highest bg-surface-container-low text-on-surface focus:outline-none focus:border-primary focus:bg-surface-container-lowest text-caption-medium transition-all"
+                    className="w-full pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant/30 rounded-lg text-body-medium text-on-surface focus:outline-none focus:border-primary transition-colors"
                   />
                 </div>
               </div>
 
-              {/* Feature: Upload Bukti Transfer / Struk */}
-              <div className="space-y-1.5 pt-1 border-t border-surface-container-low">
+              {/* File Upload (Receipt / Bukti Transfer) */}
+              <div className="space-y-1.5">
                 <label className="block font-caption-medium text-caption-medium text-on-surface">
                   Bukti Transfer / Struk (Opsional)
                 </label>
-
-                {!receiptFile ? (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full h-11 border border-dashed border-surface-container-highest hover:border-primary bg-surface-container-low hover:bg-surface-container rounded-lg px-3.5 flex items-center justify-center gap-2 text-on-surface-variant font-caption text-caption transition-colors cursor-pointer"
-                  >
-                    <Paperclip size={15} className="text-secondary" />
-                    <span>Pilih Foto Bukti Transfer (JPG, PNG, WebP &le; 5 MB)</span>
-                  </button>
-                ) : (
-                  <div className="p-2.5 rounded-lg bg-surface-container-low border border-surface-container-highest flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {receiptPreview ? (
-                        <img
-                          src={receiptPreview}
-                          alt="Preview struk"
-                          className="w-10 h-10 rounded-md object-cover border border-surface-container-highest shrink-0"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-md bg-secondary-container text-on-secondary-fixed-variant flex items-center justify-center shrink-0">
-                          <ImageIcon size={18} />
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="font-caption-medium text-caption-medium text-on-surface truncate">
-                          {receiptFile.name}
-                        </p>
-                        <p className="font-label-sm text-label-sm text-primary flex items-center gap-1">
-                          <Check size={11} /> Siap diunggah
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={removeReceipt}
-                      className="p-1.5 text-on-surface-variant hover:text-error hover:bg-surface-container rounded-md transition-colors"
-                      title="Hapus lampiran"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                )}
-
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -476,22 +479,64 @@ export function AddPersonalTransactionModal({
                   onChange={handleFileChange}
                   className="hidden"
                 />
+                {!receiptFile ? (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-2.5 px-3 border border-dashed border-outline-variant/60 hover:border-primary rounded-lg bg-surface-container-low hover:bg-surface-container text-body-medium text-on-surface-variant flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Paperclip size={16} />
+                    <span>Pilih Foto Bukti Transfer (JPG, PNG, WebP ≤ 5 MB)</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-between p-2.5 bg-surface-container rounded-lg border border-surface-container-highest">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {receiptPreview ? (
+                        <img
+                          src={receiptPreview}
+                          alt="Preview"
+                          className="w-10 h-10 object-cover rounded shrink-0 border border-surface-container-highest"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded bg-primary-container text-on-primary-container flex items-center justify-center shrink-0">
+                          <ImageIcon size={20} />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <span className="font-caption-medium text-caption-medium text-on-surface block truncate max-w-[200px]">
+                          {receiptFile.name}
+                        </span>
+                        <span className="text-[11px] text-on-surface-variant">
+                          {(receiptFile.size / 1024).toFixed(0)} KB
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeReceipt}
+                      className="p-1 text-on-surface-variant hover:text-error rounded hover:bg-surface-container-highest transition-colors cursor-pointer"
+                      title="Hapus file"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Actions */}
-              <div className="pt-3 border-t border-surface-container-highest flex gap-2.5">
+              {/* Submit Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-container-highest">
                 <button
                   type="button"
                   onClick={handleClose}
                   disabled={loading}
-                  className="flex-1 h-11 px-4 text-caption-medium font-semibold text-on-surface bg-surface-container-lowest hover:bg-surface-container-low border border-surface-container-highest rounded-lg transition-colors cursor-pointer"
+                  className="px-4 py-2 text-body-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <PrimaryButton
                   type="submit"
                   disabled={loading}
-                  className="flex-1 h-11 text-caption-medium cursor-pointer"
+                  className="px-5 py-2 font-medium"
                 >
                   {loading ? 'Menyimpan...' : 'Simpan Transaksi'}
                 </PrimaryButton>

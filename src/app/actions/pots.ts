@@ -73,9 +73,76 @@ export async function createPotAction({
     reason: `Membuat pos tabungan baru (${type}): ${pot.name}`,
   });
 
-  revalidatePath('/dashboard');
-  revalidatePath('/dashboard/pots');
+  revalidatePath('/dashboard', 'layout');
+  revalidatePath('/dashboard/personal');
+  revalidatePath('/dashboard/shared');
+  revalidatePath('/dashboard/transactions');
+  revalidatePath('/dashboard/reports');
   return { success: true, potId: pot.id };
+}
+
+export async function updatePotAction({
+  potId,
+  name,
+  description,
+  target_amount = null,
+  target_date = null,
+}: {
+  potId: string;
+  name: string;
+  description?: string;
+  target_amount?: number | null;
+  target_date?: string | null;
+}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Sesi berakhir, silakan login kembali.' };
+
+  if (!name.trim()) return { success: false, error: 'Nama pos wajib diisi.' };
+
+  const db = createAdminClient();
+
+  // Validasi peran owner
+  const { data: member } = await db
+    .from('pot_members')
+    .select('role')
+    .eq('pot_id', potId)
+    .eq('user_id', user.id)
+    .eq('status', 'ACTIVE')
+    .single();
+
+  if (member?.role !== 'OWNER') {
+    return { success: false, error: 'Hanya pemilik (owner) yang dapat mengubah pos tabungan.' };
+  }
+
+  const { error } = await db
+    .from('savings_pots')
+    .update({
+      name: name.trim(),
+      description: description?.trim() || null,
+      target_amount: target_amount && target_amount > 0 ? target_amount : null,
+      target_date: target_date || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', potId);
+
+  if (error) return { success: false, error: error.message };
+
+  await db.from('audit_logs').insert({
+    pot_id: potId,
+    actor_user_id: user.id,
+    entity_type: 'SAVINGS_POT',
+    entity_id: potId,
+    action: 'UPDATE_POT',
+    reason: `Memperbarui rincian pos tabungan: ${name.trim()}`,
+  });
+
+  revalidatePath('/dashboard', 'layout');
+  revalidatePath('/dashboard/personal');
+  revalidatePath('/dashboard/shared');
+  revalidatePath('/dashboard/transactions');
+  revalidatePath('/dashboard/reports');
+  return { success: true };
 }
 
 export async function archivePotAction(potId: string) {
@@ -114,8 +181,10 @@ export async function archivePotAction(potId: string) {
     reason: 'Mengarsipkan pos tabungan.',
   });
 
-  revalidatePath('/dashboard');
-  revalidatePath('/dashboard/pots');
+  revalidatePath('/dashboard', 'layout');
+  revalidatePath('/dashboard/personal');
+  revalidatePath('/dashboard/shared');
+  revalidatePath('/dashboard/transactions');
+  revalidatePath('/dashboard/reports');
   return { success: true };
 }
-

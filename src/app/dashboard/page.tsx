@@ -14,6 +14,7 @@ import { SeedButton } from '@/components/SeedButton';
 import { TransactionList } from '@/components/finance';
 import { AddGeneralTransactionModal } from '@/components/AddGeneralTransactionModal';
 import { AddPersonalTransactionModal } from '@/components/AddPersonalTransactionModal';
+import { CreatePersonalPotModal } from '@/components/CreatePersonalPotModal';
 import { AddSharedTransactionModal } from '@/components/AddSharedTransactionModal';
 import { CreateGroupModal } from '@/components/CreateGroupModal';
 import { ExportCsvButton } from '@/components/ExportCsvButton';
@@ -70,6 +71,7 @@ export default async function DashboardPage() {
 
   // Perhitungan Saldo Personal (terpisah secara ketat dari Saldo Bersama)
   const personalBal = personalBalance(d);
+  const personalPots = d.pots.filter((p) => p.type === 'PERSONAL');
   const personalTxs = d.txs.filter((t) => t.scope_type === 'PERSONAL');
   const personalMonthTxs = personalTxs.filter(
     (t) => monthKey(t.transaction_date + 'T00:00:00') === activeMonthKey
@@ -260,7 +262,7 @@ export default async function DashboardPage() {
                 <span className="material-symbols-outlined text-base leading-none">
                   account_balance_wallet
                 </span>
-                Tabungan Personal
+                Tabungan Personal ({personalPots.length} Pos)
               </span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed-variant font-label-sm text-label-sm">
                 <span className="material-symbols-outlined text-xs leading-none">
@@ -272,7 +274,7 @@ export default async function DashboardPage() {
 
             <div className="mt-space-sm">
               <span className="font-caption text-caption text-on-surface-variant block">
-                Saldo Terkumpul Pribadi
+                Total Akumulasi Seluruh Pos Personal
               </span>
               <div className="flex items-baseline gap-space-2xs mt-1">
                 <MaskableText
@@ -281,25 +283,64 @@ export default async function DashboardPage() {
                 />
               </div>
             </div>
-            <p className="font-caption text-caption text-on-surface-variant">
-              Kepemilikan mandiri tanpa campur tangan pihak ketiga.
-            </p>
+
+            {/* Mini breakdown of personal pots */}
+            <div className="mt-space-xs flex flex-col gap-1.5">
+              {personalPots.slice(0, 2).map((pot) => {
+                const pct =
+                  pot.target_amount && pot.target_amount > 0
+                    ? Math.min(100, Math.round((pot.balance / pot.target_amount) * 100))
+                    : null;
+                return (
+                  <Link
+                    key={pot.id}
+                    href="/dashboard/personal"
+                    className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container flex items-center justify-between transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                      <span className="font-caption-medium text-caption-medium text-on-surface truncate">
+                        {pot.name}
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="font-caption-medium text-caption-medium text-on-surface tabular-nums font-semibold">
+                        {formatRupiah(pot.balance)}
+                      </span>
+                      {pct != null && (
+                        <span className="text-[10px] text-primary block leading-none">
+                          {pct}% target
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
 
           <div className="mt-space-lg pt-space-md flex items-center justify-between gap-space-sm bg-surface-container-low/50 -mx-space-lg -mb-space-lg p-space-lg">
             <div className="flex flex-col">
               <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">
-                Alokasi Rekening
+                Alokasi Mandiri
               </span>
               <span className="font-body-medium text-body-medium text-on-surface font-semibold">
-                Kas Utama •• {personalTxs.length} Mutasi
+                {personalPots.length} Pos •• {personalTxs.length} Mutasi
               </span>
             </div>
-            <AddPersonalTransactionModal
-              triggerText="+ Catat Tabungan"
-              variant="card-action"
-              initialCategories={d.categories.filter((c) => c.scope_type === 'PERSONAL').map((c) => c.name)}
-            />
+            <div className="flex items-center gap-2">
+              <CreatePersonalPotModal
+                triggerText="+ Pos"
+                variant="secondary"
+                className="!h-10 !py-0 !text-sm cursor-pointer"
+              />
+              <AddPersonalTransactionModal
+                pots={personalPots.map((p) => ({ id: p.id, name: p.name }))}
+                triggerText="+ Catat"
+                variant="card-action"
+                initialCategories={d.categories.filter((c) => c.scope_type === 'PERSONAL').map((c) => c.name)}
+              />
+            </div>
           </div>
         </article>
 
@@ -728,6 +769,7 @@ export default async function DashboardPage() {
           emptyAction={
             <AddGeneralTransactionModal
               groups={d.groups.map((g) => ({ id: g.id, name: g.name }))}
+              personalPots={personalPots.map((p) => ({ id: p.id, name: p.name }))}
               triggerText="Catat Transaksi Pertama"
               variant="primary"
               initialCategories={d.categories.map((c) => c.name)}
