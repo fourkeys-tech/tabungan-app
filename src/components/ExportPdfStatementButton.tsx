@@ -62,7 +62,7 @@ export function ExportPdfStatementButton({
 
       return {
         index: idx + 1,
-        date: formatDate(t.transaction_date + 'T00:00:00'),
+        date: formatDate(t.transaction_date),
         rawDate: t.transaction_date,
         description: t.description || (isCredit ? 'Pemasukan / Setoran' : 'Pengeluaran'),
         category: t.category_name || (t.scope_type === 'SHARED' ? 'Kas Bersama' : 'Kas Pribadi'),

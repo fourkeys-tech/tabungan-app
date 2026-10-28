@@ -171,7 +171,7 @@ export function PendingApprovalsCard({
                       • {item.categoryName}
                     </span>
                     <span className="text-xs text-on-surface-variant">
-                      • {formatDate(item.transactionDate + 'T00:00:00')}
+                      • {formatDate(item.transactionDate)}
                     </span>
                   </div>
 

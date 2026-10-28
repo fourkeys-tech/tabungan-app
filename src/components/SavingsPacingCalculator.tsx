@@ -223,7 +223,7 @@ export function SavingsPacingCalculator({
 
           {targetDate && (
             <p className="text-[11px] text-on-surface-variant mt-0.5">
-              📅 Tenggat: <strong>{formatDate(targetDate + 'T00:00:00')}</strong> • Tersisa{' '}
+              📅 Tenggat: <strong>{formatDate(targetDate)}</strong> • Tersisa{' '}
               <strong className="text-secondary">{daysRemaining} hari lagi</strong> ({monthsRemaining} siklus bulanan).
             </p>
           )}

@@ -273,7 +273,7 @@ export function SharedLedgerClient({
         )} oleh ${t.actor_name || 'Anggota Grup'} (${
           t.description || 'Mutasi Kas'
         }).`,
-        timestamp: formatDate(t.transaction_date + 'T00:00:00'),
+        timestamp: formatDate(t.transaction_date),
         dotColor: (isIn ? 'primary' : 'secondary') as
           | 'primary'
           | 'secondary'
@@ -486,7 +486,7 @@ export function SharedLedgerClient({
                       </div>
                     ) : g.target_date ? (
                       <span className="font-caption text-caption text-outline">
-                        Target: {formatDate(g.target_date + 'T00:00:00')}
+                        Target: {formatDate(g.target_date)}
                       </span>
                     ) : (
                       <span className="font-caption text-caption text-outline">
@@ -601,12 +601,12 @@ export function SharedLedgerClient({
                           ? `Setoran oleh ${
                               latestTx.actor_name || 'Anggota'
                             } (${formatDate(
-                              latestTx.transaction_date + 'T00:00:00'
+                              latestTx.transaction_date
                             )})`
                           : `${
                               latestTx.description || 'Pengeluaran kas'
                             } (${formatDate(
-                              latestTx.transaction_date + 'T00:00:00'
+                              latestTx.transaction_date
                             )})`}
                       </span>
                     </div>
@@ -745,7 +745,7 @@ export function SharedLedgerClient({
                   <span className="font-caption text-caption text-outline mt-1">
                     {selectedGroup.target_date
                       ? `Target Tanggal: ${formatDate(
-                          selectedGroup.target_date + 'T00:00:00'
+                          selectedGroup.target_date
                         )}`
                       : `Saldo Awal: ${formatRupiah(
                           selectedGroup.opening_balance
@@ -830,7 +830,7 @@ export function SharedLedgerClient({
                               className="hover:bg-surface-container-low/60 transition-colors"
                             >
                               <td className="py-space-sm pr-2 font-caption text-caption text-on-surface-variant whitespace-nowrap">
-                                {formatDate(tx.transaction_date + 'T00:00:00')}
+                                {formatDate(tx.transaction_date)}
                               </td>
                               <td className="py-space-sm pr-2">
                                 <div className="flex items-center gap-space-xs">

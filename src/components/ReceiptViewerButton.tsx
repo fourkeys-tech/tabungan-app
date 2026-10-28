@@ -60,7 +60,7 @@ export function ReceiptViewerButton({
                 Bukti Transaksi
               </h3>
               <p className="font-caption text-caption text-on-surface-variant">
-                {formatDate(date + 'T00:00:00')}
+                {formatDate(date)}
               </p>
             </div>
           </div>

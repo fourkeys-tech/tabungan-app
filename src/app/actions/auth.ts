@@ -47,7 +47,26 @@ export async function registerAction({
       updated_at: new Date().toISOString(),
     });
 
-    // 3. Login user pada session server agar cookie auth otomatis aktif
+    // 3. Pastikan pos personal default terbuat
+    const { data: existingPot } = await adminClient
+      .from('savings_pots')
+      .select('id')
+      .eq('created_by', userId)
+      .eq('type', 'PERSONAL')
+      .maybeSingle();
+
+    if (!existingPot) {
+      await adminClient.from('savings_pots').insert({
+        type: 'PERSONAL',
+        name: 'Tabungan Utama',
+        description: 'Pos tabungan personal utama',
+        opening_balance: 0,
+        created_by: userId,
+        status: 'ACTIVE',
+      });
+    }
+
+    // 4. Login user pada session server agar cookie auth otomatis aktif
     const supabase = await createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,

@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import type { Tx, Group } from '@/utils/finance';
-import { formatRupiah, formatDate } from '@/utils/format';
+import { formatRupiah, formatDate, parseValidDate } from '@/utils/format';
 import { usePrivacy } from '@/components/PrivacyContext';
 import { ExportPdfStatementButton } from '@/components/ExportPdfStatementButton';
 import { ExportCsvButton } from '@/components/ExportCsvButton';
@@ -94,11 +94,17 @@ export function ReportsClient({
       start = new Date(today.getFullYear(), 0, 1, 0, 0, 0);
       label = `Tahun ${today.getFullYear()}`;
     } else if (period === 'custom') {
-      if (customFrom) start = new Date(customFrom + 'T00:00:00');
-      if (customTo) end = new Date(customTo + 'T23:59:59');
+      if (customFrom) {
+        start = parseValidDate(customFrom);
+        start.setHours(0, 0, 0, 0);
+      }
+      if (customTo) {
+        end = parseValidDate(customTo);
+        end.setHours(23, 59, 59, 999);
+      }
       label =
         customFrom && customTo
-          ? `${formatDate(customFrom + 'T00:00:00')} – ${formatDate(customTo + 'T00:00:00')}`
+          ? `${formatDate(customFrom)} – ${formatDate(customTo)}`
           : 'Rentang Kustom';
     } else {
       start = null;
@@ -133,7 +139,7 @@ export function ReportsClient({
     if (!startDate) return [];
     return scopedAllTxs.filter((t) => {
       if (t.status === 'VOIDED') return false;
-      const d = new Date(t.transaction_date + 'T00:00:00');
+      const d = parseValidDate(t.transaction_date);
       return d < startDate;
     });
   }, [scopedAllTxs, startDate]);
@@ -149,7 +155,7 @@ export function ReportsClient({
   // Transaksi dalam periode terpilih
   const periodTxs = useMemo(() => {
     return scopedAllTxs.filter((t) => {
-      const d = new Date(t.transaction_date + 'T00:00:00');
+      const d = parseValidDate(t.transaction_date);
       if (startDate && d < startDate) return false;
       if (endDate && d > endDate) return false;
       return true;
@@ -213,13 +219,15 @@ export function ReportsClient({
     ];
 
     activePeriodTxs.forEach((t) => {
-      const day = new Date(t.transaction_date + 'T00:00:00').getDate();
-      const idx = Math.min(3, Math.floor((day - 1) / 7));
+      const day = parseValidDate(t.transaction_date).getDate();
+      const idx = Math.min(3, Math.max(0, Math.floor((day - 1) / 7)));
       const isIn = t.transaction_type === 'INCOME' || t.transaction_type === 'CONTRIBUTION';
-      if (isIn) {
-        cycles[idx].in += t.amount;
-      } else {
-        cycles[idx].out += t.amount;
+      if (cycles[idx]) {
+        if (isIn) {
+          cycles[idx].in += t.amount;
+        } else {
+          cycles[idx].out += t.amount;
+        }
       }
     });
 
@@ -992,7 +1000,7 @@ export function ReportsClient({
                       }`}
                     >
                       <td className="py-3.5 px-4 font-caption text-caption text-on-surface whitespace-nowrap">
-                        {formatDate(row.transaction_date + 'T00:00:00')}
+                        {formatDate(row.transaction_date)}
                       </td>
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         <div

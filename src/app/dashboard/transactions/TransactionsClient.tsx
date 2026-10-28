@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { Tx, Group } from '@/utils/finance';
-import { formatRupiah, formatDate } from '@/utils/format';
+import { formatRupiah, formatDate, parseValidDate } from '@/utils/format';
 import { usePrivacy } from '@/components/PrivacyContext';
 import { ExportPdfStatementButton } from '@/components/ExportPdfStatementButton';
 import { ExportCsvButton } from '@/components/ExportCsvButton';
@@ -91,11 +91,17 @@ export function TransactionsClient({
       start = new Date(today.getFullYear(), 0, 1, 0, 0, 0);
       label = `Tahun ${today.getFullYear()}`;
     } else if (period === 'custom') {
-      if (customFrom) start = new Date(customFrom + 'T00:00:00');
-      if (customTo) end = new Date(customTo + 'T23:59:59');
+      if (customFrom) {
+        start = parseValidDate(customFrom);
+        start.setHours(0, 0, 0, 0);
+      }
+      if (customTo) {
+        end = parseValidDate(customTo);
+        end.setHours(23, 59, 59, 999);
+      }
       label =
         customFrom && customTo
-          ? `${formatDate(customFrom + 'T00:00:00')} – ${formatDate(customTo + 'T00:00:00')}`
+          ? `${formatDate(customFrom)} – ${formatDate(customTo)}`
           : 'Rentang Kustom';
     } else {
       start = null;
@@ -109,7 +115,8 @@ export function TransactionsClient({
   // Transaksi dengan Ref Code
   const enrichedTxs = useMemo(() => {
     return txs.map((t) => {
-      const refCode = `#TRX-${t.transaction_date.replace(/-/g, '')}-${t.id.slice(0, 3).toUpperCase()}`;
+      const datePart = (t.transaction_date || '').split('T')[0].replace(/-/g, '');
+      const refCode = `#TRX-${datePart}-${t.id.slice(0, 3).toUpperCase()}`;
       return { ...t, refCode };
     });
   }, [txs]);
@@ -117,7 +124,7 @@ export function TransactionsClient({
   // Filter Berdasarkan Periode
   const periodFilteredTxs = useMemo(() => {
     return enrichedTxs.filter((t) => {
-      const d = new Date(t.transaction_date + 'T00:00:00');
+      const d = parseValidDate(t.transaction_date);
       if (startDate && d < startDate) return false;
       if (endDate && d > endDate) return false;
       return true;
@@ -707,7 +714,7 @@ export function TransactionsClient({
                       <td className="py-space-md px-space-md whitespace-nowrap">
                         <div className="flex flex-col">
                           <span className="font-body-medium text-body-medium text-on-surface">
-                            {formatDate(t.transaction_date + 'T00:00:00')}
+                            {formatDate(t.transaction_date)}
                           </span>
                           <span className="font-caption text-caption text-outline">
                             {t.created_by_user_id === userId ? 'Oleh Anda' : t.actor_name || 'Anggota'}
@@ -990,7 +997,7 @@ export function TransactionsClient({
                 <div className="flex items-center justify-between text-caption font-caption text-on-surface-variant">
                   <span>Waktu Pencatatan:</span>
                   <span className="font-caption-medium text-caption-medium text-on-surface">
-                    {formatDate(inspectTx.transaction_date + 'T00:00:00')}
+                    {formatDate(inspectTx.transaction_date)}
                   </span>
                 </div>
                 <span className="font-headline-h2 text-headline-h2 text-on-surface font-semibold">

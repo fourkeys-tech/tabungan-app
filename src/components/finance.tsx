@@ -167,7 +167,7 @@ export function TransactionList({
             return (
               <tr key={t.id} className="hover:bg-surface-container-low/60 transition-colors">
                 <td className="py-space-md px-space-md font-caption-medium text-caption-medium text-on-surface-variant whitespace-nowrap">
-                  {formatDate(t.transaction_date + 'T00:00:00')}
+                  {formatDate(t.transaction_date)}
                 </td>
                 <td className="py-space-md px-space-md">
                   <div className="flex items-center gap-space-sm">
