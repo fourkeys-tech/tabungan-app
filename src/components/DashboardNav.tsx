@@ -72,7 +72,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Navigasi bawah"
-      className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-surface-container-lowest/95 backdrop-blur-md border-t border-surface-container-highest grid grid-cols-5 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-2px_10px_rgba(0,0,0,0.04)]"
+      className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-surface-container-lowest/95 backdrop-blur-md border-t border-surface-container-highest grid grid-cols-5 pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-2px_10px_rgba(0,0,0,0.04)]"
     >
       {items.map(({ href, short, materialIcon }) => {
         const active = isActive(href);
@@ -81,7 +81,7 @@ export function MobileNav() {
             key={href}
             href={href}
             aria-current={active ? 'page' : undefined}
-            className={`flex flex-col items-center justify-center gap-0.5 pt-2 pb-1 text-[11px] font-medium transition-colors ${
+            className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium transition-colors ${
               active ? 'text-primary font-semibold' : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >

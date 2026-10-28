@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -9,10 +9,20 @@ const inter = Inter({
   weight: ["400", "500", "600", "700"],
 });
 
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8faf9" },
+    { media: "(prefers-color-scheme: dark)", color: "#091512" },
+  ],
+  viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
-  title: "TabungKu v2.0 — Keuangan Pribadi dan Bersama",
+  title: "TabungKu v2.1 — Keuangan Pribadi dan Bersama",
   description:
-    "Platform pengelolaan tabungan personal dan kas bersama dengan pemisahan portofolio terverifikasi.",
+    "Platform pengelolaan tabungan personal dan kas bersama dengan arsitektur Pos Tabungan terpadu.",
 };
 
 export default function RootLayout({

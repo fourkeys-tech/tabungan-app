@@ -33,14 +33,18 @@ export async function getPendingApprovals(
   userId: string,
   targetGroupId?: string
 ): Promise<PendingApprovalItem[]> {
-  // 1. Ambil grup aktif yang diikuti pengguna
+  // 1. Ambil pos bersama aktif yang diikuti pengguna
   const { data: memberships } = await adminClient
-    .from('savings_group_members')
-    .select('group_id, role, savings_groups(id, name)')
+    .from('pot_members')
+    .select('pot_id, role, savings_pots(id, name, type, approval_quorum)')
     .eq('user_id', userId)
     .eq('status', 'ACTIVE');
 
-  const myGroupIds = (memberships ?? []).map((m: any) => m.group_id);
+  const sharedPots = (memberships ?? [])
+    .filter((m: any) => m.savings_pots?.type === 'SHARED')
+    .map((m: any) => m.savings_pots);
+
+  const myGroupIds = sharedPots.map((p: any) => p.id);
   if (myGroupIds.length === 0) return [];
 
   const filterGroupIds = targetGroupId ? [targetGroupId] : myGroupIds;
@@ -49,12 +53,10 @@ export async function getPendingApprovals(
   const { data: pendingRows } = await adminClient
     .from('transactions')
     .select(
-      'id, group_id, amount, description, transaction_date, created_at, created_by_user_id, savings_groups(name), categories(name)'
+      'id, pot_id, amount, description, transaction_date, created_at, created_by_user_id, receipt_url, category_name, savings_pots(name, approval_quorum)'
     )
-    .eq('scope_type', 'SHARED')
-    .eq('transaction_type', 'EXPENSE')
     .eq('status', 'PENDING_APPROVAL')
-    .in('group_id', filterGroupIds)
+    .in('pot_id', filterGroupIds)
     .order('created_at', { ascending: false });
 
   if (!pendingRows || pendingRows.length === 0) return [];
@@ -70,56 +72,42 @@ export async function getPendingApprovals(
 
   const profileMap: Record<string, { name: string; email: string }> = {};
   (creatorProfiles ?? []).forEach((p: any) => {
-    profileMap[p.id] = { name: p.name || 'Anggota Grup', email: p.email || '' };
+    profileMap[p.id] = { name: p.name || 'Anggota Pos', email: p.email || '' };
   });
 
-  // 4. Hitung jumlah total anggota aktif per grup untuk menentukan kuorum approval
-  const { data: allGroupMembers } = await adminClient
-    .from('savings_group_members')
-    .select('group_id, user_id, role')
-    .in('group_id', filterGroupIds)
+  // 4. Hitung jumlah total anggota aktif per pos
+  const { data: allPotMembers } = await adminClient
+    .from('pot_members')
+    .select('pot_id, user_id, role')
+    .in('pot_id', filterGroupIds)
     .eq('status', 'ACTIVE');
 
-  const groupMemberCountMap: Record<string, number> = {};
-  (allGroupMembers ?? []).forEach((m: any) => {
-    groupMemberCountMap[m.group_id] = (groupMemberCountMap[m.group_id] || 0) + 1;
+  const potMemberCountMap: Record<string, number> = {};
+  (allPotMembers ?? []).forEach((m: any) => {
+    potMemberCountMap[m.pot_id] = (potMemberCountMap[m.pot_id] || 0) + 1;
   });
 
-  // 5. Query riwayat approval dari audit_logs
-  const { data: approvalLogs } = await adminClient
-    .from('audit_logs')
-    .select('entity_id, actor_user_id, action, after_data')
-    .eq('entity_type', 'TRANSACTION_APPROVAL')
-    .in('entity_id', pendingTxIds);
-
-  // Query audit_logs untuk receipt_url saat CREATE
-  const { data: creationLogs } = await adminClient
-    .from('audit_logs')
-    .select('entity_id, after_data')
-    .eq('entity_type', 'TRANSACTION')
-    .in('entity_id', pendingTxIds);
-
-  const receiptMap: Record<string, string> = {};
-  (creationLogs ?? []).forEach((c: any) => {
-    if (c.after_data?.receipt_url) {
-      receiptMap[c.entity_id] = c.after_data.receipt_url;
-    }
-  });
+  // 5. Query persetujuan dari transaction_approvals
+  const { data: approvalsData } = await adminClient
+    .from('transaction_approvals')
+    .select('transaction_id, voter_user_id, decision')
+    .in('transaction_id', pendingTxIds);
 
   const approvalMap: Record<string, string[]> = {};
-  (approvalLogs ?? []).forEach((log: any) => {
-    if (log.action === 'APPROVE') {
-      if (!approvalMap[log.entity_id]) approvalMap[log.entity_id] = [];
-      approvalMap[log.entity_id].push(log.actor_user_id);
+  (approvalsData ?? []).forEach((row: any) => {
+    if (row.decision === 'APPROVE') {
+      if (!approvalMap[row.transaction_id]) approvalMap[row.transaction_id] = [];
+      approvalMap[row.transaction_id].push(row.voter_user_id);
     }
   });
 
   // 6. Petakan hasil
   return pendingRows.map((r: any) => {
-    const totalMembers = groupMemberCountMap[r.group_id] || 2;
-    // Kuorum persetujuan: jika grup 2 orang butuh 1 anggota lain; jika > 2 orang butuh minimal 50% anggota lain
-    const otherMembers = Math.max(1, totalMembers - 1);
-    const requiredApprovals = Math.max(1, Math.ceil(otherMembers / 2));
+    const totalMembers = potMemberCountMap[r.pot_id] || 2;
+    const potObj = Array.isArray(r.savings_pots) ? r.savings_pots[0] : r.savings_pots;
+    
+    // Kuorum persetujuan (default to pot approval_quorum, fallback to 2)
+    const requiredApprovals = potObj?.approval_quorum || Math.max(1, Math.min(2, totalMembers - 1));
 
     const approvedUserIds = approvalMap[r.id] || [];
     const approvalsCount = approvedUserIds.length;
@@ -127,22 +115,20 @@ export async function getPendingApprovals(
     const isCreator = r.created_by_user_id === userId;
     const canUserApprove = !isCreator && !hasUserApproved;
 
-    const groupObj = Array.isArray(r.savings_groups) ? r.savings_groups[0] : r.savings_groups;
-    const catObj = Array.isArray(r.categories) ? r.categories[0] : r.categories;
-    const creator = profileMap[r.created_by_user_id] || { name: 'Anggota Grup', email: '' };
+    const creator = profileMap[r.created_by_user_id] || { name: 'Anggota Pos', email: '' };
 
     return {
       id: r.id,
-      groupId: r.group_id,
-      groupName: groupObj?.name || 'Tabungan Bersama',
+      groupId: r.pot_id,
+      groupName: potObj?.name || 'Tabungan Bersama',
       amount: Number(r.amount),
       description: r.description,
       transactionDate: r.transaction_date,
-      categoryName: catObj?.name || 'Pengeluaran Kas',
+      categoryName: r.category_name || 'Pengeluaran Kas',
       createdByUserId: r.created_by_user_id,
       createdByName: creator.name,
       createdByEmail: creator.email,
-      receiptUrl: receiptMap[r.id] ?? null,
+      receiptUrl: r.receipt_url ?? null,
       createdAt: r.created_at,
       approvalsCount,
       requiredApprovals,
@@ -172,7 +158,7 @@ export async function approveSharedExpenseAction(transactionId: string): Promise
   // 1. Ambil transaksi yang sedang PENDING_APPROVAL
   const { data: tx } = await adminClient
     .from('transactions')
-    .select('id, group_id, amount, created_by_user_id, status')
+    .select('id, pot_id, amount, created_by_user_id, status, savings_pots(approval_quorum)')
     .eq('id', transactionId)
     .single();
 
@@ -184,37 +170,36 @@ export async function approveSharedExpenseAction(transactionId: string): Promise
     return { error: 'Anda tidak dapat menyetujui pengajuan yang Anda buat sendiri.' };
   }
 
-  // 2. Verifikasi keanggotaan aktif dalam grup
+  // 2. Verifikasi keanggotaan aktif dalam pos
   const { data: membership } = await adminClient
-    .from('savings_group_members')
+    .from('pot_members')
     .select('role, status')
-    .eq('group_id', tx.group_id)
+    .eq('pot_id', tx.pot_id)
     .eq('user_id', user.id)
     .eq('status', 'ACTIVE')
     .maybeSingle();
 
   if (!membership) {
-    return { error: 'Anda bukan anggota aktif pada tabungan bersama ini.' };
+    return { error: 'Anda bukan anggota aktif pada pos tabungan ini.' };
   }
 
-  // 3. Cek apakah user sudah pernah approve
-  const { data: existingApproval } = await adminClient
-    .from('audit_logs')
-    .select('id')
-    .eq('entity_type', 'TRANSACTION_APPROVAL')
-    .eq('entity_id', transactionId)
-    .eq('actor_user_id', user.id)
-    .eq('action', 'APPROVE')
-    .maybeSingle();
+  // 3. Simpan voting di transaction_approvals
+  const { error: approvalErr } = await adminClient
+    .from('transaction_approvals')
+    .upsert({
+      transaction_id: transactionId,
+      voter_user_id: user.id,
+      decision: 'APPROVE',
+    }, { onConflict: 'transaction_id,voter_user_id' });
 
-  if (existingApproval) {
-    return { error: 'Anda sudah menyetujui pengajuan ini sebelumnya.' };
+  if (approvalErr) {
+    return { error: 'Gagal mencatat persetujuan: ' + approvalErr.message };
   }
 
   // 4. Catat persetujuan di audit_logs
   await adminClient.from('audit_logs').insert({
+    pot_id: tx.pot_id,
     actor_user_id: user.id,
-    group_id: tx.group_id,
     entity_type: 'TRANSACTION_APPROVAL',
     entity_id: transactionId,
     action: 'APPROVE',
@@ -222,26 +207,26 @@ export async function approveSharedExpenseAction(transactionId: string): Promise
       role: membership.role,
       approved_at: new Date().toISOString(),
     },
+    reason: `Menyetujui pengajuan penarikan`,
   });
 
   // 5. Cek kuorum apakah sudah memenuhi batas persetujuan
-  const [{ count: totalActiveMembers }, { data: allApprovals }] = await Promise.all([
+  const [{ data: allApprovals }, { count: totalActiveMembers }] = await Promise.all([
     adminClient
-      .from('savings_group_members')
+      .from('transaction_approvals')
+      .select('voter_user_id')
+      .eq('transaction_id', transactionId)
+      .eq('decision', 'APPROVE'),
+    adminClient
+      .from('pot_members')
       .select('id', { count: 'exact', head: true })
-      .eq('group_id', tx.group_id)
+      .eq('pot_id', tx.pot_id)
       .eq('status', 'ACTIVE'),
-    adminClient
-      .from('audit_logs')
-      .select('actor_user_id')
-      .eq('entity_type', 'TRANSACTION_APPROVAL')
-      .eq('entity_id', transactionId)
-      .eq('action', 'APPROVE'),
   ]);
 
+  const potObj = Array.isArray(tx.savings_pots) ? tx.savings_pots[0] : tx.savings_pots;
   const memberCount = totalActiveMembers || 2;
-  const otherMembers = Math.max(1, memberCount - 1);
-  const requiredApprovals = Math.max(1, Math.ceil(otherMembers / 2));
+  const requiredApprovals = potObj?.approval_quorum || Math.max(1, Math.min(2, memberCount - 1));
   const currentApprovalsCount = (allApprovals ?? []).length;
 
   // Jika owner menyetujui ATAU sudah memenuhi kuorum persetujuan, aktifkan transaksi
@@ -253,8 +238,8 @@ export async function approveSharedExpenseAction(transactionId: string): Promise
       .eq('id', transactionId);
 
     await adminClient.from('audit_logs').insert({
+      pot_id: tx.pot_id,
       actor_user_id: user.id,
-      group_id: tx.group_id,
       entity_type: 'TRANSACTION',
       entity_id: transactionId,
       action: 'APPROVAL_COMPLETED',
@@ -263,6 +248,7 @@ export async function approveSharedExpenseAction(transactionId: string): Promise
         total_approvals: currentApprovalsCount,
         completed_at: new Date().toISOString(),
       },
+      reason: `Kuorum persetujuan terpenuhi (${currentApprovalsCount}/${requiredApprovals})`,
     });
   }
 
@@ -299,7 +285,7 @@ export async function rejectSharedExpenseAction(
 
   const { data: tx } = await adminClient
     .from('transactions')
-    .select('id, group_id, status')
+    .select('id, pot_id, status')
     .eq('id', transactionId)
     .single();
 
@@ -309,30 +295,39 @@ export async function rejectSharedExpenseAction(
 
   // Verifikasi keanggotaan aktif
   const { data: membership } = await adminClient
-    .from('savings_group_members')
+    .from('pot_members')
     .select('role')
-    .eq('group_id', tx.group_id)
+    .eq('pot_id', tx.pot_id)
     .eq('user_id', user.id)
     .eq('status', 'ACTIVE')
     .maybeSingle();
 
   if (!membership) {
-    return { error: 'Anda bukan anggota aktif pada tabungan bersama ini.' };
+    return { error: 'Anda bukan anggota aktif pada pos tabungan ini.' };
   }
 
-  // Ubah status transaksi menjadi VOIDED dengan alasan penolakan
+  // Simpan penolakan di transaction_approvals
+  await adminClient
+    .from('transaction_approvals')
+    .upsert({
+      transaction_id: transactionId,
+      voter_user_id: user.id,
+      decision: 'REJECT',
+    }, { onConflict: 'transaction_id,voter_user_id' });
+
+  // Ubah status transaksi menjadi REJECTED
   await adminClient
     .from('transactions')
     .update({
-      status: 'VOIDED',
+      status: 'REJECTED',
       void_reason: `Ditolak oleh anggota: ${cleanReason}`,
     })
     .eq('id', transactionId);
 
   // Catat di audit_logs
   await adminClient.from('audit_logs').insert({
+    pot_id: tx.pot_id,
     actor_user_id: user.id,
-    group_id: tx.group_id,
     entity_type: 'TRANSACTION_APPROVAL',
     entity_id: transactionId,
     action: 'REJECT',
@@ -364,7 +359,7 @@ export async function cancelSharedExpenseAction(transactionId: string): Promise<
 
   const { data: tx } = await adminClient
     .from('transactions')
-    .select('id, group_id, created_by_user_id, status')
+    .select('id, pot_id, created_by_user_id, status')
     .eq('id', transactionId)
     .single();
 
@@ -385,8 +380,8 @@ export async function cancelSharedExpenseAction(transactionId: string): Promise<
     .eq('id', transactionId);
 
   await adminClient.from('audit_logs').insert({
+    pot_id: tx.pot_id,
     actor_user_id: user.id,
-    group_id: tx.group_id,
     entity_type: 'TRANSACTION',
     entity_id: transactionId,
     action: 'CANCEL_REQUEST',
@@ -399,4 +394,3 @@ export async function cancelSharedExpenseAction(transactionId: string): Promise<
 
   return { success: true };
 }
-

@@ -47,14 +47,14 @@ export default async function SharedLedgerPage({
   if (groupIds.length > 0) {
     const [{ data: membersRaw }, { data: auditRaw }] = await Promise.all([
       adminClient
-        .from('savings_group_members')
-        .select('id, group_id, user_id, role, status, joined_at, profiles(name, email)')
-        .in('group_id', groupIds)
+        .from('pot_members')
+        .select('id, pot_id, user_id, role, status, joined_at, profiles(name, email)')
+        .in('pot_id', groupIds)
         .eq('status', 'ACTIVE'),
       adminClient
         .from('audit_logs')
-        .select('id, actor_user_id, group_id, entity_type, action, after_data, reason, created_at')
-        .in('group_id', groupIds)
+        .select('id, actor_user_id, pot_id, entity_type, action, after_data, reason, created_at')
+        .in('pot_id', groupIds)
         .order('created_at', { ascending: false })
         .limit(50),
     ]);
@@ -66,7 +66,7 @@ export default async function SharedLedgerPage({
 
       const item: GroupMemberInfo = {
         id: m.id,
-        group_id: m.group_id,
+        group_id: m.pot_id,
         user_id: m.user_id,
         role: m.role,
         name,
@@ -74,14 +74,15 @@ export default async function SharedLedgerPage({
         joined_at: m.joined_at,
       };
 
-      if (!membersByGroup[m.group_id]) {
-        membersByGroup[m.group_id] = [];
+      if (!membersByGroup[m.pot_id]) {
+        membersByGroup[m.pot_id] = [];
       }
-      membersByGroup[m.group_id].push(item);
+      membersByGroup[m.pot_id].push(item);
     });
 
     (auditRaw ?? []).forEach((a: any) => {
-      if (!a.group_id) return;
+      const potId = a.pot_id;
+      if (!potId) return;
       const actorName = userNamesById[a.actor_user_id] || 'Anggota';
       let title = 'Aktivitas Buku Kas Tercatat';
       let description = a.reason || `Tindakan ${a.action} oleh ${actorName}.`;
@@ -118,7 +119,7 @@ export default async function SharedLedgerPage({
 
       const logItem: SharedAuditLogItem = {
         id: a.id,
-        group_id: a.group_id,
+        group_id: potId,
         action: a.action,
         title,
         description,
@@ -126,10 +127,10 @@ export default async function SharedLedgerPage({
         dotColor,
       };
 
-      if (!auditLogsByGroup[a.group_id]) {
-        auditLogsByGroup[a.group_id] = [];
+      if (!auditLogsByGroup[potId]) {
+        auditLogsByGroup[potId] = [];
       }
-      auditLogsByGroup[a.group_id].push(logItem);
+      auditLogsByGroup[potId].push(logItem);
     });
   }
 

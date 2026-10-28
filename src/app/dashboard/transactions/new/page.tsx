@@ -20,8 +20,8 @@ export default async function NewTransactionPage({ searchParams }: Props) {
 
   const [{ data: memberships }, { data: dbCategories }] = await Promise.all([
     adminClient
-      .from('savings_group_members')
-      .select('savings_groups(id, name)')
+      .from('pot_members')
+      .select('savings_pots(id, name, type)')
       .eq('user_id', user.id)
       .eq('status', 'ACTIVE'),
     adminClient
@@ -31,8 +31,8 @@ export default async function NewTransactionPage({ searchParams }: Props) {
   ]);
 
   const groups = (memberships ?? []).flatMap((m: any) => {
-    const g = Array.isArray(m.savings_groups) ? m.savings_groups[0] : m.savings_groups;
-    return g ? [{ id: g.id, name: g.name }] : [];
+    const p = Array.isArray(m.savings_pots) ? m.savings_pots[0] : m.savings_pots;
+    return p && p.type === 'SHARED' ? [{ id: p.id, name: p.name }] : [];
   });
 
   const initialCategories = (dbCategories ?? []).map((c: any) => c.name);

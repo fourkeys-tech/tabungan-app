@@ -18,41 +18,41 @@ export default async function InvitePage({ params }: Props) {
 
   const { data: { user } } = await userClient.auth.getUser();
 
-  // Ambil detail undangan
+  // Ambil detail undangan dari pot_invitations
   const { data: inv } = await adminClient
-    .from('invitations')
+    .from('pot_invitations')
     .select(`
       id,
-      group_id,
-      status,
+      pot_id,
       expires_at,
-      created_by_user_id,
-      savings_groups (
+      revoked_at,
+      created_by,
+      savings_pots (
         id,
         name,
         description,
         target_amount
       )
     `)
-    .eq('token_hash', token)
+    .eq('token', token)
     .maybeSingle();
 
-  // Undangan tidak ditemukan atau sudah tidak valid
   const isExpired = inv?.expires_at ? new Date(inv.expires_at) < new Date() : false;
-  const isInvalid = !inv || inv.status !== 'PENDING' || isExpired;
+  const isRevoked = Boolean(inv?.revoked_at);
+  const isInvalid = !inv || isExpired || isRevoked;
 
   if (isInvalid) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-bg p-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
         <div className="mb-6"><Logo /></div>
         <Card className="max-w-md w-full text-center py-8 px-6 space-y-4">
-          <div className="w-14 h-14 rounded-full bg-accent/10 text-accent flex items-center justify-center mx-auto">
+          <div className="w-14 h-14 rounded-full bg-error/10 text-error flex items-center justify-center mx-auto">
             <AlertCircle size={28} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-text-main">Undangan Tidak Valid</h1>
-            <p className="text-sm text-text-muted mt-2">
-              Tautan undangan ini sudah kedaluwarsa, dicabut, atau sudah pernah digunakan sebelumnya.
+            <h1 className="text-xl font-bold text-on-surface">Undangan Tidak Valid</h1>
+            <p className="text-sm text-on-surface-variant mt-2">
+              Tautan undangan ini sudah kedaluwarsa, dicabut, atau sudah tidak berlaku.
             </p>
           </div>
           <div className="pt-4">
@@ -65,15 +65,15 @@ export default async function InvitePage({ params }: Props) {
     );
   }
 
-  const group = Array.isArray(inv.savings_groups) ? inv.savings_groups[0] : inv.savings_groups;
+  const pot = Array.isArray(inv.savings_pots) ? inv.savings_pots[0] : inv.savings_pots;
 
-  // Cek apakah user yang sedang login sudah menjadi anggota
+  // Cek apakah user yang sedang login sudah menjadi anggota aktif
   let isAlreadyMember = false;
   if (user) {
     const { data: member } = await adminClient
-      .from('savings_group_members')
+      .from('pot_members')
       .select('id, status')
-      .eq('group_id', inv.group_id)
+      .eq('pot_id', inv.pot_id)
       .eq('user_id', user.id)
       .eq('status', 'ACTIVE')
       .maybeSingle();
@@ -82,35 +82,38 @@ export default async function InvitePage({ params }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-bg p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <div className="mb-8"><Logo /></div>
 
-      <Card className="max-w-md w-full p-8 space-y-6 shadow-xl border-border-main">
+      <Card className="max-w-md w-full p-8 space-y-6 shadow-xl border-surface-container-highest">
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3">
+          <div className="w-16 h-16 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center mx-auto mb-3">
             <Users size={32} />
           </div>
-          <p className="text-xs font-semibold text-primary uppercase tracking-wider">Undangan Tabungan Bersama</p>
-          <h1 className="text-2xl font-bold text-text-main">{group?.name}</h1>
-          {group?.description && (
-            <p className="text-sm text-text-muted">{group.description}</p>
+          <p className="text-xs font-semibold text-secondary uppercase tracking-wider">Undangan Tabungan Bersama</p>
+          <h1 className="text-2xl font-bold text-on-surface">{pot?.name}</h1>
+          {pot?.description && (
+            <p className="text-sm text-on-surface-variant">{pot.description}</p>
           )}
         </div>
 
-        {group?.target_amount && (
-          <div className="bg-surface-muted/60 p-4 rounded-xl border border-border-main flex items-center justify-between text-sm">
-            <span className="text-text-muted">Target Tabungan:</span>
-            <span className="font-bold text-text-main">{formatRupiah(Number(group.target_amount))}</span>
+        {pot?.target_amount && (
+          <div className="bg-surface-container-low rounded-xl p-4 text-center">
+            <span className="text-xs text-on-surface-variant block">Target Tabungan</span>
+            <span className="text-lg font-bold text-secondary">
+              {formatRupiah(Number(pot.target_amount))}
+            </span>
           </div>
         )}
 
-        <div className="pt-2">
+        <div className="space-y-3">
           {isAlreadyMember ? (
-            <div className="space-y-4 text-center">
-              <div className="flex items-center justify-center gap-2 text-sm text-success font-medium">
-                <CheckCircle2 size={18} /> Kamu sudah bergabung di tabungan ini
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 p-3 bg-primary/10 text-primary rounded-xl text-sm font-medium">
+                <CheckCircle2 size={18} />
+                <span>Anda sudah menjadi anggota tabungan ini.</span>
               </div>
-              <LinkButton href={`/dashboard/shared?group=${inv.group_id}`} className="w-full py-3">
+              <LinkButton href={`/dashboard/shared?group=${inv.pot_id}`} className="w-full">
                 Buka Tabungan Bersama
               </LinkButton>
             </div>
@@ -118,21 +121,22 @@ export default async function InvitePage({ params }: Props) {
             <AcceptInviteButton token={token} />
           ) : (
             <div className="space-y-3">
-              <p className="text-xs text-center text-text-muted mb-2">
-                Masuk atau daftar terlebih dahulu untuk menerima undangan ini:
+              <p className="text-xs text-center text-on-surface-variant">
+                Silakan masuk atau daftar akun TabungKu untuk bergabung ke tabungan bersama ini.
               </p>
-              <LinkButton href={`/login?redirect=/invite/${token}`} className="w-full py-3">
-                Masuk ke Akun
+              <LinkButton href={`/login?redirect=/invite/${token}`} className="w-full">
+                Masuk untuk Bergabung
               </LinkButton>
-              <LinkButton href={`/register?redirect=/invite/${token}`} variant="secondary" className="w-full py-3">
+              <LinkButton href={`/register?redirect=/invite/${token}`} variant="secondary" className="w-full">
                 Daftar Akun Baru
               </LinkButton>
             </div>
           )}
         </div>
 
-        <div className="flex items-center justify-center gap-2 text-[11px] text-text-muted pt-2 border-t border-border-main">
-          <ShieldCheck size={14} /> Pencatatan aman & terverifikasi sistem TabungKu
+        <div className="pt-2 border-t border-surface-container-highest flex items-center justify-center gap-2 text-xs text-on-surface-variant">
+          <ShieldCheck size={14} className="text-primary" />
+          <span>Pengelolaan Transparan &amp; Tata Kelola Aman</span>
         </div>
       </Card>
     </div>

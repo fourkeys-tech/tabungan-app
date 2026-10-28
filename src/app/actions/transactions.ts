@@ -3,7 +3,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { createAdminClient } from '@/utils/supabase/admin';
 import { revalidatePath } from 'next/cache';
-import { BASELINE_CATEGORIES } from '@/utils/finance';
 
 export type ActionResponse = {
   success?: boolean;
@@ -12,7 +11,7 @@ export type ActionResponse = {
 };
 
 /**
- * Mencatat transaksi baru (Pribadi atau Bersama) dengan dukungan kategori dinamis & upload bukti transfer
+ * Mencatat transaksi baru (Pos Tabungan Personal atau Bersama) dengan dukungan kategori dinamis & upload bukti transfer
  */
 export async function createTransaction(formData: FormData): Promise<ActionResponse> {
   const userClient = await createClient();
@@ -24,7 +23,7 @@ export async function createTransaction(formData: FormData): Promise<ActionRespo
     return { error: 'Sesi telah berakhir. Silakan login kembali.' };
   }
 
-  const destination = (formData.get('destination') as string)?.trim(); // 'personal' or groupId
+  const destination = (formData.get('destination') as string)?.trim(); // potId or 'personal'
   const type = formData.get('type') as 'in' | 'out'; // 'in' (pemasukan/setoran) or 'out' (pengeluaran)
   const amountRaw = formData.get('amount') as string;
   const description = (formData.get('description') as string)?.trim() || null;
@@ -43,12 +42,69 @@ export async function createTransaction(formData: FormData): Promise<ActionRespo
   }
 
   if (!destination) {
-    return { error: 'Silakan pilih tujuan tabungan (Pribadi atau Bersama).' };
+    return { error: 'Silakan pilih pos tabungan tujuan.' };
   }
 
   const adminClient = createAdminClient();
 
-  // 2. Resolve Category Dinamis (cari ID jika ada, atau buat baru di tabel categories)
+  // 2. Resolve Target Pot (bisa via pot_id langsung atau fallback 'personal')
+  let targetPot: any = null;
+
+  if (destination === 'personal') {
+    // Cari pos personal user yang aktif
+    const { data: memberRows } = await adminClient
+      .from('pot_members')
+      .select('pot_id, savings_pots(*)')
+      .eq('user_id', user.id)
+      .eq('status', 'ACTIVE');
+
+    const personalMember = (memberRows ?? []).find(
+      (m: any) => m.savings_pots?.type === 'PERSONAL' && m.savings_pots?.status === 'ACTIVE'
+    );
+
+    if (personalMember && personalMember.savings_pots) {
+      targetPot = personalMember.savings_pots;
+    } else {
+      // Buat pos personal default jika belum ada
+      const { data: newPot, error: createPotErr } = await adminClient
+        .from('savings_pots')
+        .insert({
+          type: 'PERSONAL',
+          name: 'Tabungan Utama',
+          description: 'Pos tabungan personal utama',
+          opening_balance: 0,
+          created_by: user.id,
+          status: 'ACTIVE',
+        })
+        .select()
+        .single();
+
+      if (createPotErr || !newPot) {
+        return { error: 'Gagal menginisialisasi pos personal: ' + (createPotErr?.message || '') };
+      }
+      targetPot = newPot;
+    }
+  } else {
+    // Cari pot berdasarkan ID dan verifikasi keanggotaan aktif
+    const { data: memberRow } = await adminClient
+      .from('pot_members')
+      .select('role, savings_pots(*)')
+      .eq('pot_id', destination)
+      .eq('user_id', user.id)
+      .eq('status', 'ACTIVE')
+      .maybeSingle();
+
+    if (!memberRow || !memberRow.savings_pots) {
+      return { error: 'Anda bukan anggota aktif pada pos tabungan yang dipilih.' };
+    }
+    targetPot = memberRow.savings_pots;
+  }
+
+  if (!targetPot) {
+    return { error: 'Pos tabungan tidak ditemukan.' };
+  }
+
+  // 3. Resolve Kategori Dinamis
   let categoryId: string | null = null;
   if (categoryName && categoryName !== 'Lainnya') {
     const { data: cat } = await adminClient
@@ -66,10 +122,10 @@ export async function createTransaction(formData: FormData): Promise<ActionRespo
         .insert({
           owner_user_id: user.id,
           name: categoryName,
-          scope_type: destination === 'personal' ? 'PERSONAL' : 'SHARED',
+          scope_type: targetPot.type === 'PERSONAL' ? 'PERSONAL' : 'SHARED',
           transaction_type:
             type === 'in'
-              ? destination === 'personal'
+              ? targetPot.type === 'PERSONAL'
                 ? 'INCOME'
                 : 'CONTRIBUTION'
               : 'EXPENSE',
@@ -80,180 +136,103 @@ export async function createTransaction(formData: FormData): Promise<ActionRespo
     }
   }
 
-  // 3. Kasus Tabungan Pribadi
-  if (destination === 'personal') {
-    let { data: ledger } = await adminClient
-      .from('personal_ledgers')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (!ledger) {
-      const { data: newLedger } = await adminClient
-        .from('personal_ledgers')
-        .insert({ user_id: user.id, name: 'Keuangan Pribadi' })
-        .select('id')
-        .single();
-      ledger = newLedger;
-    }
-
-    if (!ledger) {
-      return { error: 'Buku tabungan pribadi tidak ditemukan.' };
-    }
-
-    const transactionType = type === 'in' ? 'INCOME' : 'EXPENSE';
-
-    const { data: tx, error: txErr } = await adminClient
-      .from('transactions')
-      .insert({
-        scope_type: 'PERSONAL',
-        personal_ledger_id: ledger.id,
-        group_id: null,
-        created_by_user_id: user.id,
-        contributor_user_id: null,
-        transaction_type: transactionType,
-        amount,
-        category_id: categoryId,
-        transaction_date: transactionDate,
-        description,
-        status: 'ACTIVE',
-      })
-      .select('id')
-      .single();
-
-    if (txErr || !tx) {
-      return { error: 'Gagal menyimpan transaksi: ' + (txErr?.message || 'Error') };
-    }
-
-    // Upload Bukti Struk jika ada
-    let receiptUrl: string | null = null;
-    if (receiptFile && receiptFile.size > 0) {
-      receiptUrl = await handleReceiptUpload(adminClient, tx.id, receiptFile);
-    }
-
-    // Audit log
-    await adminClient.from('audit_logs').insert({
-      actor_user_id: user.id,
-      entity_type: 'TRANSACTION',
-      entity_id: tx.id,
-      action: 'CREATE',
-      after_data: {
-        scope_type: 'PERSONAL',
-        transaction_type: transactionType,
-        amount,
-        description,
-        receipt_url: receiptUrl,
-      },
-    });
-
-    revalidatePath('/dashboard', 'layout');
-    revalidatePath('/dashboard/personal');
-    revalidatePath('/dashboard/transactions');
-    revalidatePath('/dashboard/reports');
-    return { success: true, data: { id: tx.id, receipt_url: receiptUrl } };
-  }
-
-  // 4. Kasus Tabungan Bersama (Grup)
-  const groupId = destination;
-
-  // Verifikasi keanggotaan aktif
-  const { data: membership } = await adminClient
-    .from('savings_group_members')
-    .select('role, status')
-    .eq('group_id', groupId)
-    .eq('user_id', user.id)
-    .eq('status', 'ACTIVE')
-    .maybeSingle();
-
-  if (!membership) {
-    return { error: 'Anda bukan anggota aktif pada tabungan bersama ini.' };
-  }
-
-  const transactionType = type === 'in' ? 'CONTRIBUTION' : 'EXPENSE';
-
-  // Validasi pencegahan saldo negatif (BR-04) bila pengeluaran
-  if (transactionType === 'EXPENSE') {
-    const [{ data: groupRow }, { data: groupTxs }] = await Promise.all([
-      adminClient.from('savings_groups').select('opening_balance').eq('id', groupId).single(),
-      adminClient
-        .from('transactions')
-        .select('amount, transaction_type')
-        .eq('group_id', groupId)
-        .eq('status', 'ACTIVE'),
-    ]);
-
-    const openingBalance = Number(groupRow?.opening_balance ?? 0);
-    const currentBalance = (groupTxs ?? []).reduce((acc, t) => {
-      const amt = Number(t.amount);
-      return acc + (t.transaction_type === 'EXPENSE' ? -amt : amt);
-    }, openingBalance);
-
-    if (currentBalance - amount < 0) {
-      const formatRp = new Intl.NumberFormat('id-ID', {
-        style: 'currency',
-        currency: 'IDR',
-        maximumFractionDigits: 0,
-      }).format(currentBalance);
-      return {
-        error: `Saldo tabungan bersama tidak mencukupi untuk pengeluaran ini. (Saldo saat ini: ${formatRp})`,
-      };
-    }
-  }
-
-  // Multi-Approval: Jika pengeluaran kas grup dan anggota lebih dari 1, butuh persetujuan
-  let initialStatus = 'ACTIVE';
+  // 4. Tentukan Jenis & Status Transaksi sesuai PRD v2.1
+  let transactionType: 'INCOME' | 'EXPENSE' | 'CONTRIBUTION';
+  let initialStatus: 'ACTIVE' | 'PENDING_APPROVAL' = 'ACTIVE';
   let requiresApproval = false;
 
-  if (transactionType === 'EXPENSE') {
-    const { count: memberCount } = await adminClient
-      .from('savings_group_members')
-      .select('id', { count: 'exact', head: true })
-      .eq('group_id', groupId)
-      .eq('status', 'ACTIVE');
+  if (targetPot.type === 'PERSONAL') {
+    transactionType = type === 'in' ? 'INCOME' : 'EXPENSE';
+    initialStatus = 'ACTIVE';
+  } else {
+    // SHARED pot
+    transactionType = type === 'in' ? 'CONTRIBUTION' : 'EXPENSE';
 
-    if (memberCount && memberCount > 1) {
-      initialStatus = 'PENDING_APPROVAL';
-      requiresApproval = true;
+    if (transactionType === 'EXPENSE') {
+      // Validasi pencegahan saldo negatif (BR-03)
+      const [{ data: potRow }, { data: potTxs }] = await Promise.all([
+        adminClient.from('savings_pots').select('opening_balance').eq('id', targetPot.id).single(),
+        adminClient
+          .from('transactions')
+          .select('amount, transaction_type')
+          .eq('pot_id', targetPot.id)
+          .eq('status', 'ACTIVE'),
+      ]);
+
+      const openingBalance = Number(potRow?.opening_balance ?? 0);
+      const currentBalance = (potTxs ?? []).reduce((acc, t) => {
+        const amt = Number(t.amount);
+        return acc + (t.transaction_type === 'EXPENSE' ? -amt : amt);
+      }, openingBalance);
+
+      if (currentBalance - amount < 0) {
+        const formatRp = new Intl.NumberFormat('id-ID', {
+          style: 'currency',
+          currency: 'IDR',
+          maximumFractionDigits: 0,
+        }).format(currentBalance);
+        return {
+          error: `Saldo pos tidak mencukupi untuk penarikan ini. (Saldo saat ini: ${formatRp})`,
+        };
+      }
+
+      // Hitung jumlah anggota aktif (FR-20)
+      const { count: memberCount } = await adminClient
+        .from('pot_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('pot_id', targetPot.id)
+        .eq('status', 'ACTIVE');
+
+      // Jika lebih dari 1 anggota aktif, butuh persetujuan multi-sig
+      if (memberCount && memberCount > 1) {
+        initialStatus = 'PENDING_APPROVAL';
+        requiresApproval = true;
+      } else {
+        initialStatus = 'ACTIVE';
+      }
     }
   }
 
+  // 5. Simpan transaksi ke tabel terpadu transactions
   const { data: tx, error: txErr } = await adminClient
     .from('transactions')
     .insert({
-      scope_type: 'SHARED',
-      personal_ledger_id: null,
-      group_id: groupId,
-      created_by_user_id: user.id,
-      contributor_user_id: transactionType === 'CONTRIBUTION' ? user.id : null,
+      pot_id: targetPot.id,
       transaction_type: transactionType,
       amount,
       category_id: categoryId,
+      category_name: categoryName,
       transaction_date: transactionDate,
       description,
       status: initialStatus,
+      created_by_user_id: user.id,
+      contributor_user_id: transactionType === 'CONTRIBUTION' ? user.id : null,
     })
     .select('id')
     .single();
 
   if (txErr || !tx) {
-    return { error: 'Gagal mencatat transaksi bersama: ' + (txErr?.message || 'Error') };
+    return { error: 'Gagal mencatat transaksi: ' + (txErr?.message || 'Error') };
   }
 
-  // Upload Bukti Struk jika ada
+  // 6. Upload Bukti Struk jika ada
   let receiptUrl: string | null = null;
   if (receiptFile && receiptFile.size > 0) {
     receiptUrl = await handleReceiptUpload(adminClient, tx.id, receiptFile);
+    if (receiptUrl) {
+      await adminClient.from('transactions').update({ receipt_url: receiptUrl }).eq('id', tx.id);
+    }
   }
 
-  // Audit log
+  // 7. Catat ke Audit Log
   await adminClient.from('audit_logs').insert({
+    pot_id: targetPot.id,
     actor_user_id: user.id,
-    group_id: groupId,
     entity_type: 'TRANSACTION',
     entity_id: tx.id,
     action: requiresApproval ? 'SUBMIT_FOR_APPROVAL' : 'CREATE',
     after_data: {
-      scope_type: 'SHARED',
+      pot_type: targetPot.type,
       transaction_type: transactionType,
       amount,
       description,
@@ -261,9 +240,11 @@ export async function createTransaction(formData: FormData): Promise<ActionRespo
       requires_approval: requiresApproval,
       status: initialStatus,
     },
+    reason: `Mencatat transaksi ${transactionType} sebesar ${amount}`,
   });
 
   revalidatePath('/dashboard', 'layout');
+  revalidatePath('/dashboard/personal');
   revalidatePath('/dashboard/shared');
   revalidatePath('/dashboard/transactions');
   revalidatePath('/dashboard/reports');
@@ -334,7 +315,7 @@ export async function voidTransaction(
   // 1. Ambil transaksi
   const { data: tx, error: fetchErr } = await adminClient
     .from('transactions')
-    .select('id, scope_type, group_id, created_by_user_id, status, amount, transaction_type')
+    .select('id, pot_id, created_by_user_id, status, amount, transaction_type, savings_pots(type)')
     .eq('id', transactionId)
     .single();
 
@@ -346,28 +327,26 @@ export async function voidTransaction(
     return { error: 'Transaksi ini sudah pernah dibatalkan sebelumnya.' };
   }
 
-  // 2. Cek otorisasi
-  if (tx.scope_type === 'PERSONAL') {
-    if (tx.created_by_user_id !== user.id) {
-      return { error: 'Anda tidak berhak membatalkan transaksi milik orang lain.' };
-    }
-  } else if (tx.scope_type === 'SHARED') {
-    const { data: member } = await adminClient
-      .from('savings_group_members')
-      .select('role')
-      .eq('group_id', tx.group_id)
-      .eq('user_id', user.id)
-      .eq('status', 'ACTIVE')
-      .maybeSingle();
+  // 2. Cek otorisasi berdasarkan keanggotaan pos
+  const { data: member } = await adminClient
+    .from('pot_members')
+    .select('role')
+    .eq('pot_id', tx.pot_id)
+    .eq('user_id', user.id)
+    .eq('status', 'ACTIVE')
+    .maybeSingle();
 
-    const isCreator = tx.created_by_user_id === user.id;
-    const isOwner = member?.role === 'OWNER';
+  if (!member) {
+    return { error: 'Anda tidak memiliki hak akses pada pos tabungan ini.' };
+  }
 
-    if (!isCreator && !isOwner) {
-      return {
-        error: 'Hanya pembuat transaksi atau pemilik grup yang dapat membatalkan transaksi ini.',
-      };
-    }
+  const isCreator = tx.created_by_user_id === user.id;
+  const isOwner = member.role === 'OWNER';
+
+  if (!isCreator && !isOwner) {
+    return {
+      error: 'Hanya pembuat transaksi atau pemilik (owner) pos yang dapat membatalkan transaksi ini.',
+    };
   }
 
   // 3. Update status menjadi VOIDED
@@ -386,8 +365,8 @@ export async function voidTransaction(
 
   // 4. Catat ke Audit Log
   await adminClient.from('audit_logs').insert({
+    pot_id: tx.pot_id,
     actor_user_id: user.id,
-    group_id: tx.group_id,
     entity_type: 'TRANSACTION',
     entity_id: transactionId,
     action: 'VOID',
@@ -405,7 +384,7 @@ export async function voidTransaction(
 }
 
 /**
- * Memperbarui data transaksi personal (Nominal, Kategori, Keterangan, Tanggal, Jenis, Metode)
+ * Memperbarui data transaksi personal (Nominal, Kategori, Keterangan, Tanggal, Jenis)
  * dengan pencatatan jejak audit (UPDATE)
  */
 export async function updatePersonalTransactionAction(
@@ -437,7 +416,7 @@ export async function updatePersonalTransactionAction(
   // 1. Ambil transaksi existing
   const { data: tx, error: fetchErr } = await adminClient
     .from('transactions')
-    .select('*')
+    .select('*, savings_pots(type)')
     .eq('id', transactionId)
     .single();
 
@@ -445,8 +424,8 @@ export async function updatePersonalTransactionAction(
     return { error: 'Transaksi tidak ditemukan.' };
   }
 
-  if (tx.scope_type !== 'PERSONAL' || tx.created_by_user_id !== user.id) {
-    return { error: 'Anda hanya dapat mengubah transaksi personal milik Anda sendiri.' };
+  if (tx.created_by_user_id !== user.id) {
+    return { error: 'Anda hanya dapat mengubah transaksi milik Anda sendiri.' };
   }
 
   if (tx.status === 'VOIDED') {
@@ -488,8 +467,10 @@ export async function updatePersonalTransactionAction(
       transaction_type: payload.type,
       amount: payload.amount,
       category_id: categoryId,
+      category_name: cleanCat || null,
       description: payload.description?.trim() || null,
       transaction_date: payload.transactionDate || tx.transaction_date,
+      payment_method: payload.paymentMethod || tx.payment_method,
       updated_at: new Date().toISOString(),
     })
     .eq('id', transactionId);
@@ -500,8 +481,8 @@ export async function updatePersonalTransactionAction(
 
   // 4. Catat ke Audit Log
   await adminClient.from('audit_logs').insert({
+    pot_id: tx.pot_id,
     actor_user_id: user.id,
-    group_id: null,
     entity_type: 'TRANSACTION',
     entity_id: transactionId,
     action: 'UPDATE',
@@ -517,7 +498,7 @@ export async function updatePersonalTransactionAction(
       description: payload.description?.trim(),
       date: payload.transactionDate,
     },
-    reason: 'Perubahan rincian transaksi personal oleh pemilik akun',
+    reason: 'Perubahan rincian transaksi oleh pemilik akun',
   });
 
   revalidatePath('/dashboard', 'layout');
@@ -526,4 +507,3 @@ export async function updatePersonalTransactionAction(
   revalidatePath('/dashboard/reports');
   return { success: true };
 }
-
