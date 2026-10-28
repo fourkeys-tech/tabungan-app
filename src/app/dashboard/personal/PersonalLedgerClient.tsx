@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import type { SavingsPot, Tx } from '@/utils/finance';
-import { formatRupiah, formatDate } from '@/utils/format';
+import { formatRupiah, formatDate, parseValidDate } from '@/utils/format';
 import { usePrivacy } from '@/components/PrivacyContext';
 import { AddPersonalTransactionModal } from '@/components/AddPersonalTransactionModal';
 import { CreatePersonalPotModal } from '@/components/CreatePersonalPotModal';
@@ -156,7 +156,7 @@ export function PersonalLedgerClient({
 
     const filtered = potFilteredTxs.filter((tx) => {
       if (!startDate) return true;
-      const txD = new Date(tx.transaction_date + 'T00:00:00');
+      const txD = parseValidDate(tx.transaction_date);
       return txD >= startDate;
     });
 
@@ -894,7 +894,7 @@ export function PersonalLedgerClient({
                       }`}
                     >
                       <td className="py-space-sm px-space-md whitespace-nowrap text-on-surface-variant font-caption text-caption">
-                        {formatDate(tx.transaction_date + 'T00:00:00')}
+                        {formatDate(tx.transaction_date)}
                       </td>
                       <td className="py-space-sm px-space-md font-body-medium text-body-medium">
                         <div className="flex items-center gap-1.5">
@@ -1105,7 +1105,7 @@ export function PersonalLedgerClient({
                     <div className="flex items-center justify-between text-caption font-caption text-on-surface-variant">
                       <span>Keterangan</span>
                       <span className="font-caption-medium text-caption-medium text-on-surface">
-                        {formatDate(selectedTx.transaction_date + 'T00:00:00')}
+                        {formatDate(selectedTx.transaction_date)}
                       </span>
                     </div>
                     <span className="font-headline-h2 text-headline-h2 text-on-surface">

@@ -9,7 +9,7 @@ import {
   groupBalance,
   monthKey,
 } from '@/utils/finance';
-import { formatRupiah } from '@/utils/format';
+import { formatRupiah, parseValidDate } from '@/utils/format';
 import { SeedButton } from '@/components/SeedButton';
 import { TransactionList } from '@/components/finance';
 import { AddGeneralTransactionModal } from '@/components/AddGeneralTransactionModal';
@@ -52,10 +52,10 @@ export default async function DashboardPage() {
   const now = new Date();
   const currentMonthKey = monthKey(now);
   const latestTxDate = d.txs[0]?.transaction_date
-    ? new Date(d.txs[0].transaction_date + 'T00:00:00')
+    ? parseValidDate(d.txs[0].transaction_date)
     : now;
   const hasCurrentMonthTx = d.txs.some(
-    (t) => monthKey(t.transaction_date + 'T00:00:00') === currentMonthKey
+    (t) => monthKey(t.transaction_date) === currentMonthKey
   );
   const activeDate = hasCurrentMonthTx ? now : latestTxDate;
   const activeMonthKey = monthKey(activeDate);
@@ -74,7 +74,7 @@ export default async function DashboardPage() {
   const personalPots = d.pots.filter((p) => p.type === 'PERSONAL');
   const personalTxs = d.txs.filter((t) => t.scope_type === 'PERSONAL');
   const personalMonthTxs = personalTxs.filter(
-    (t) => monthKey(t.transaction_date + 'T00:00:00') === activeMonthKey
+    (t) => monthKey(t.transaction_date) === activeMonthKey
   );
   const personalMonthIncome = personalMonthTxs
     .filter((t) => t.transaction_type === 'INCOME')
@@ -108,7 +108,7 @@ export default async function DashboardPage() {
 
   // Perhitungan Ringkasan Bulan Ini (Pemasukan vs Pengeluaran)
   const monthAllTxs = d.txs.filter(
-    (t) => monthKey(t.transaction_date + 'T00:00:00') === activeMonthKey
+    (t) => monthKey(t.transaction_date) === activeMonthKey
   );
   const incomeTxs = monthAllTxs.filter((t) => t.transaction_type === 'INCOME');
   const expenseTxs = monthAllTxs.filter((t) => t.transaction_type === 'EXPENSE');
@@ -132,7 +132,7 @@ export default async function DashboardPage() {
   ];
 
   for (const t of monthAllTxs) {
-    const day = new Date(t.transaction_date + 'T00:00:00').getDate();
+    const day = parseValidDate(t.transaction_date).getDate();
     const weekIdx = day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : 3;
     if (t.transaction_type === 'INCOME' || t.transaction_type === 'CONTRIBUTION') {
       weeks[weekIdx].income += t.amount;

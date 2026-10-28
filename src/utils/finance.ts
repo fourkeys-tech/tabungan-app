@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/utils/supabase/admin';
+import { parseValidDate } from '@/utils/format';
 
 export type PotType = 'PERSONAL' | 'SHARED';
 export type PotStatus = 'ACTIVE' | 'ARCHIVED';
@@ -281,8 +282,8 @@ export function groupBalance(groupOrId: string | Group, dataOrTxs: FinanceData |
   return pot ? pot.balance : 0;
 }
 
-export function monthKey(dateInput: string | Date): string {
-  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+export function monthKey(dateInput: string | Date | null | undefined): string {
+  const d = parseValidDate(dateInput);
   if (!d || isNaN(d.getTime())) return '';
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
