@@ -33,7 +33,7 @@ export function Logo({
         <span className={`${text} tracking-tight text-primary font-bold leading-none`}>TabungKu</span>
         {showSubtitle && (
           <span className="font-label-sm text-label-sm text-on-surface-variant leading-tight mt-0.5">
-            v2.1 Keuangan Bersama
+            - Aplikasi Tabungan
           </span>
         )}
       </span>
