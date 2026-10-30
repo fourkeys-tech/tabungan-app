@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { createClient } from "@/utils/supabase/client";
@@ -77,10 +78,15 @@ export default function RegisterPage() {
           href="/"
           className="pointer-events-auto flex items-center gap-space-xs text-primary group focus:outline-none"
         >
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-on-primary shadow-[0_1px_8px_rgba(0,0,0,0.08)] group-hover:scale-105 transition-transform duration-300">
-            <span className="material-symbols-outlined text-[20px]">
-              account_balance_wallet
-            </span>
+          <div className="w-8 h-8 relative flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+            <Image
+              src="/logo-icon.png"
+              alt="TabungKu Logo"
+              width={32}
+              height={32}
+              className="object-contain"
+              priority
+            />
           </div>
           <span className="font-headline-h2 text-headline-h2 text-on-surface lg:text-white tracking-tight group-hover:text-primary lg:group-hover:text-primary-fixed transition-colors">
             TabungKu

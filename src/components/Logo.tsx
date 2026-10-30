@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { PiggyBank } from 'lucide-react';
+import Image from 'next/image';
 
 export function Logo({
   size = 'md',
@@ -10,24 +10,30 @@ export function Logo({
   href?: string;
   showSubtitle?: boolean;
 }) {
-  const box = size === 'lg' ? 'w-10 h-10' : size === 'sm' ? 'w-7 h-7' : 'w-8 h-8';
-  const icon = size === 'lg' ? 22 : size === 'sm' ? 15 : 18;
+  const imgSize = size === 'lg' ? 40 : size === 'sm' ? 28 : 32;
   const text = size === 'lg' ? 'text-2xl' : size === 'sm' ? 'text-base' : 'font-headline-h3 text-headline-h3';
 
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-space-sm text-on-surface"
+      className="inline-flex items-center gap-space-sm text-on-surface group"
       aria-label="TabungKu — beranda"
     >
-      <span className={`${box} rounded-lg bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-xs`}>
-        <PiggyBank size={icon} aria-hidden="true" />
-      </span>
+      <div className="relative shrink-0 flex items-center justify-center">
+        <Image
+          src="/logo-icon.png"
+          alt="TabungKu Logo"
+          width={imgSize}
+          height={imgSize}
+          className="object-contain group-hover:scale-105 transition-transform"
+          priority
+        />
+      </div>
       <span className="flex flex-col">
         <span className={`${text} tracking-tight text-primary font-bold leading-none`}>TabungKu</span>
         {showSubtitle && (
           <span className="font-label-sm text-label-sm text-on-surface-variant leading-tight mt-0.5">
-            v2.0 Keuangan Bersama
+            v2.1 Keuangan Bersama
           </span>
         )}
       </span>
