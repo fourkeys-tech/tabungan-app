@@ -296,6 +296,12 @@ export default function LoginPage() {
                       >
                         Kata Sandi
                       </label>
+                      <Link
+                        href="/forgot-password"
+                        className="font-caption text-caption text-primary hover:text-primary-container font-medium transition-colors"
+                      >
+                        Lupa kata sandi?
+                      </Link>
                     </div>
                     <div className="relative flex items-center">
                       <span className="material-symbols-outlined absolute left-space-sm text-[18px] text-on-surface-variant pointer-events-none">

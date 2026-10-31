@@ -83,3 +83,105 @@ export async function registerAction({
     return { success: false, error: err.message || 'Terjadi kesalahan sistem saat mendaftar.' };
   }
 }
+
+/**
+ * Mengirim tautan pemulihan kata sandi (Password Reset) ke email pengguna
+ */
+export async function forgotPasswordAction({
+  email,
+  origin,
+}: {
+  email: string;
+  origin?: string;
+}) {
+  try {
+    const supabase = await createClient();
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Pastikan user terdaftar di profiles terlebih dahulu
+    const adminClient = createAdminClient();
+    const { data: profile } = await adminClient
+      .from('profiles')
+      .select('id, email')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (!profile) {
+      return {
+        success: false,
+        error: 'Email ini belum terdaftar di TabungKu. Silakan periksa kembali atau buat akun baru.',
+      };
+    }
+
+    const redirectTo = origin
+      ? `${origin}/auth/callback?next=/reset-password`
+      : undefined;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: true,
+      message: 'Tautan pemulihan kata sandi telah dikirim ke email Anda. Silakan periksa kotak masuk atau spam.',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Terjadi kesalahan sistem saat memproses pemulihan kata sandi.',
+    };
+  }
+}
+
+/**
+ * Memperbarui kata sandi baru untuk pengguna yang telah terverifikasi sesi pemulihannya
+ */
+export async function updatePasswordAction({
+  password,
+}: {
+  password: string;
+}) {
+  try {
+    if (!password || password.length < 6) {
+      return {
+        success: false,
+        error: 'Kata sandi baru minimal harus 6 karakter.',
+      };
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return {
+        success: false,
+        error: 'Sesi pemulihan tidak valid atau telah kedaluwarsa. Silakan ajukan ulang tautan lupa kata sandi.',
+      };
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password,
+    });
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    return {
+      success: true,
+      message: 'Kata sandi berhasil diperbarui. Silakan masuk kembali.',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Terjadi kesalahan sistem saat memperbarui kata sandi.',
+    };
+  }
+}
