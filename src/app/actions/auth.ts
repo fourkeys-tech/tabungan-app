@@ -86,6 +86,80 @@ export async function registerAction({
 }
 
 /**
+ * Mereset kata sandi akun secara langsung menggunakan validasi email terdaftar
+ */
+export async function directResetPasswordAction({
+  email,
+  newPassword,
+}: {
+  email: string;
+  newPassword: string;
+}) {
+  try {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      return { success: false, error: 'Alamat email wajib diisi.' };
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'Kata sandi baru minimal harus 6 karakter.' };
+    }
+
+    const adminClient = createAdminClient();
+
+    // 1. Cari user di profiles atau auth.users
+    const { data: profile } = await adminClient
+      .from('profiles')
+      .select('id, email, name')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    let targetUserId = profile?.id;
+
+    if (!targetUserId) {
+      // Coba periksa di auth.users via listUsers jika profil belum ada
+      const { data: usersData } = await adminClient.auth.admin.listUsers();
+      const user = usersData?.users?.find(
+        (u) => u.email?.toLowerCase() === cleanEmail
+      );
+      if (user) {
+        targetUserId = user.id;
+      }
+    }
+
+    if (!targetUserId) {
+      return {
+        success: false,
+        error: 'Alamat email ini belum terdaftar di TabungKu. Silakan periksa kembali atau buat akun baru.',
+      };
+    }
+
+    // 2. Perbarui kata sandi langsung menggunakan Supabase Admin API
+    const { error: updateError } = await adminClient.auth.admin.updateUserById(
+      targetUserId,
+      {
+        password: newPassword,
+      }
+    );
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    return {
+      success: true,
+      message: 'Kata sandi berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Terjadi kesalahan sistem saat memperbarui kata sandi.',
+    };
+  }
+}
+
+/**
  * Mengirim tautan pemulihan kata sandi (Password Reset) ke email pengguna
  */
 export async function forgotPasswordAction({
