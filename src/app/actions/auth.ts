@@ -2,6 +2,7 @@
 
 import { createClient } from '@/utils/supabase/server';
 import { createAdminClient } from '@/utils/supabase/admin';
+import { sendEmail } from '@/utils/mailer';
 import { redirect } from 'next/navigation';
 
 export async function logoutAction() {
@@ -102,7 +103,7 @@ export async function forgotPasswordAction({
     const adminClient = createAdminClient();
     const { data: profile } = await adminClient
       .from('profiles')
-      .select('id, email')
+      .select('id, email, name')
       .eq('email', cleanEmail)
       .maybeSingle();
 
@@ -117,17 +118,69 @@ export async function forgotPasswordAction({
       ? `${origin}/auth/callback?next=/reset-password`
       : undefined;
 
+    // 1. Generate link pemulihan aman via Supabase Admin
+    const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+      type: 'recovery',
+      email: cleanEmail,
+      options: {
+        redirectTo,
+      },
+    });
+
+    const recoveryLink = linkData?.properties?.action_link;
+
+    // 2. Jika link berhasil dibuat dan SendCoreX terkonfigurasi, kirimkan via SendCoreX
+    if (recoveryLink) {
+      const emailResult = await sendEmail({
+        to: cleanEmail,
+        subject: 'Permintaan Pemulihan Kata Sandi Akun TabungKu',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #0d2019; margin: 0; font-size: 24px;">TabungKu</h2>
+              <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Platform Pengelolaan Kas Personal & Bersama</p>
+            </div>
+            <p style="color: #334155; font-size: 16px; line-height: 1.5;">Halo <strong>${profile.name || 'Pengguna'}</strong>,</p>
+            <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+              Kami menerima permintaan untuk mengatur ulang kata sandi akun TabungKu Anda. Silakan klik tombol di bawah ini untuk membuat kata sandi baru:
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${recoveryLink}" style="display: inline-block; background: #00875a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: bold; font-size: 15px;">
+                Atur Ulang Kata Sandi
+              </a>
+            </div>
+            <p style="color: #64748b; font-size: 13px; line-height: 1.5;">
+              Tautan ini hanya berlaku selama 1 jam dan hanya dapat digunakan 1 kali. Jika Anda tidak pernah meminta pemulihan kata sandi ini, Anda dapat mengabaikan email ini dengan aman.
+            </p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+              © ${new Date().getFullYear()} TabungKu. Seluruh hak cipta dilindungi.
+            </p>
+          </div>
+        `,
+        text: `Halo ${profile.name || 'Pengguna'},\n\nSilakan gunakan tautan berikut untuk mengatur ulang kata sandi akun TabungKu Anda:\n${recoveryLink}\n\nTautan ini hanya berlaku selama 1 jam.`,
+      });
+
+      if (emailResult.success) {
+        return {
+          success: true,
+          message: 'Tautan pemulihan kata sandi telah dikirim ke email Anda melalui SendCoreX. Silakan periksa kotak masuk atau spam.',
+        };
+      }
+    }
+
+    // 3. Fallback: kirim via Supabase Auth jika link generator atau pengiriman custom perlu fallback
     const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
       redirectTo,
     });
 
-    if (error) {
+    if (error && !recoveryLink) {
       return { success: false, error: error.message };
     }
 
     return {
       success: true,
-      message: 'Tautan pemulihan kata sandi telah dikirim ke email Anda. Silakan periksa kotak masuk atau spam.',
+      message: 'Tautan pemulihan kata sandi telah diproses dan dikirim ke email Anda. Silakan periksa kotak masuk atau spam.',
     };
   } catch (err: any) {
     return {
