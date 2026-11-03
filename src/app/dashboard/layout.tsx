@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
 import { SidebarNav, MobileNav } from '@/components/DashboardNav';
@@ -29,6 +30,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
+
+  // Validasi batas waktu sesi absolut (Maksimal 10 jam)
+  const cookieStore = await cookies();
+  const authTimeStr = cookieStore.get('tabungku_auth_time')?.value;
+  const MAX_SESSION_MS = 10 * 60 * 60 * 1000; // 10 jam
+
+  if (authTimeStr) {
+    const authTime = parseInt(authTimeStr, 10);
+    if (!isNaN(authTime) && Date.now() - authTime > MAX_SESSION_MS) {
+      await supabase.auth.signOut();
+      redirect('/login?expired=1');
+    }
+  }
 
   const adminClient = createAdminClient();
   const [{ data: profile }, notifications] = await Promise.all([

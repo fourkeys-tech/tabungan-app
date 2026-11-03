@@ -11,6 +11,67 @@ export async function logoutAction() {
   redirect('/login');
 }
 
+/**
+ * Server action untuk login dengan pengelolaan session lifetime & login timestamp
+ */
+export async function loginAction({
+  email,
+  password,
+  rememberMe,
+}: {
+  email: string;
+  password: string;
+  rememberMe: boolean;
+}) {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error || !data.user) {
+      return {
+        success: false,
+        error: 'Email atau kata sandi yang Anda masukkan tidak sesuai.',
+      };
+    }
+
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+
+    // Catat waktu login saat ini (Unix ms)
+    const nowMs = Date.now();
+    // 10 jam dalam detik
+    const maxAgeSeconds = 10 * 60 * 60;
+
+    const cookieOptions: any = {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    };
+
+    if (rememberMe) {
+      // Jika dicentang, batas waktu mutlak 10 jam
+      cookieOptions.maxAge = maxAgeSeconds;
+    } else {
+      // Jika tidak dicentang: Session cookie murni (otomatis terhapus saat browser ditutup)
+      delete cookieOptions.maxAge;
+    }
+
+    cookieStore.set('tabungku_auth_time', nowMs.toString(), cookieOptions);
+    cookieStore.set('tabungku_remember', rememberMe ? 'true' : 'false', cookieOptions);
+
+    return { success: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || 'Terjadi kesalahan sistem saat masuk.',
+    };
+  }
+}
+
 export async function registerAction({
   name,
   email,
